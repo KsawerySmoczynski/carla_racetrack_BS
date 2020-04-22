@@ -1,3 +1,15 @@
+# Folders
+*.ipynb_checkpoints
+*.idea
+*.__pycache__
+
+# Files
+*.png
+*.jpg
+*.csv
+*.txt
+*.pdf
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
