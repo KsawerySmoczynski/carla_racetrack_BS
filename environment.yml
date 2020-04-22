@@ -81,5 +81,5 @@ dependencies:
     - traitlets==4.3.3
     - ujson==1.35
     - urllib3==1.25.6
-prefix: /home/ksmocz/anaconda3/envs/carla_racetrack
+prefix: ~/anaconda3/envs/carla_racetrack
 
