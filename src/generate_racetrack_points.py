@@ -10,7 +10,7 @@ from scipy.interpolate import splprep, splev
 from scipy.ndimage import gaussian_filter1d
 
 data = [x for x in os.listdir('data/spawn_points') if '.csv' in x]
-track_DF = pd.read_csv(f'data/spawn_points/{data[1]}')
+track_DF = pd.read_csv(f'data/spawn_points/{data[0]}')
 
 # https://stackoverflow.com/questions/47948453/scipy-interpolate-splprep-error-invalid-inputs
 x = track_DF['x'].values
@@ -29,14 +29,12 @@ yn = yn[(jump > 0) & (smooth_jump < limit)]
 pts_2D = np.array([x, y])
 pts_2D = np.array([xn, yn])
 tck, u = splprep(pts_2D, u=None, s=1.5, per=1, k=2)
-u_new = np.linspace(u.min(), u.max(), 1000)
+u_new = np.linspace(u.min(), u.max(), 10000)
 x_new, y_new = splev(u_new, tck, der=0)
 pts_2D = np.c_[x_new, y_new]
 
-plt.plot(xp, yp, '-o')
-plt.show()
-
-
-plt.scatter(xp, yp, s=7., color='red')
+# plt.plot(xp, yp, '-o')
+# plt.show()
+plt.scatter(x, y, s=7., color='red')
 plt.plot(x_new, y_new, '-o')
 plt.show()
