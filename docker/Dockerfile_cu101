@@ -1,0 +1,83 @@
+FROM nvidia/cuda:10.1-base-ubuntu18.04
+
+# Install some basic utilities
+RUN apt-get update && apt-get install -y \
+    curl \
+    ca-certificates \
+    sudo \
+    git \
+    bzip2 \
+    libx11-6 \
+    libpng16-16 \ 
+    libjpeg-turbo8 \ 
+    libtiff5 \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y libpng16-16 libjpeg-turbo8 libtiff5
+
+# Create a working directory
+RUN mkdir /app
+WORKDIR /app
+
+# Create a non-root user and switch to it
+RUN adduser --disabled-password --gecos '' --shell /bin/bash user \
+ && chown -R user:user /app
+RUN echo "user ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-user
+USER user
+
+# All users can use /home/user as their home directory
+ENV HOME=/home/user
+RUN chmod 777 /home/user
+
+# Install Miniconda and Python 3.7
+ENV CONDA_AUTO_UPDATE_CONDA=false
+ENV PATH=/home/user/miniconda/bin:$PATH
+RUN curl -sLo ~/miniconda.sh https://repo.continuum.io/miniconda/Miniconda3-py38_4.8.2-Linux-x86_64.sh \
+ && chmod +x ~/miniconda.sh \
+ && ~/miniconda.sh -b -p ~/miniconda \
+ && rm ~/miniconda.sh \
+ && conda install -y python==3.7.7 \
+ && conda config --append channels conda-forge \
+ && conda clean -ya
+
+# CUDA 10.1-specific steps
+RUN conda install -y -c pytorch \
+    cudatoolkit=10.1 \
+    "pytorch=1.4.0=py3.7_cuda10.1.243_cudnn7.6.3_0" \
+    "torchvision=0.5.0=py37_cu101" \
+    nodejs \
+    ipyvolume \
+ && conda clean -ya
+
+ENV PATH=/home/user/.local/bin:$PATH
+
+RUN pip install --user jupyter notebook jupyterlab matplotlib ipykernel \
+	numpy pandas pygame \
+	jupyter_http_over_ws  \
+	tensorboardX \ 
+	seaborn
+RUN jupyter labextension install --no-build @jupyter-widgets/jupyterlab-manager @jupyterlab/git ipyvolume jupyter-threejs @jupyterlab/toc && jupyter lab build
+
+#&& jupyter labextension install --no-build ipyvolume 
+
+RUN mkdir -p /home/user/workspace/env && chmod -R a+rwx /home/user/workspace/
+
+COPY carla.egg /home/user/workspace/env/carla.egg
+USER root
+RUN chmod -R a+rwx /home/user/workspace/
+USER user
+RUN easy_install /home/user/workspace/env/carla.egg
+USER root
+#RUN mkdir /home/user/.local && chmod a+rwx /home/user/.local
+RUN mkdir -p /home/user/.local/share/jupyter && chmod a+rwx /home/user/.local/share/jupyter && mkdir -p /home/user/.jupyter/ && chmod a+rwx /home/user/.jupyter/
+
+WORKDIR /home/user/workspace
+EXPOSE 8888
+
+RUN python -m ipykernel.kernelspec
+
+USER user
+RUN echo "c.NotebookApp.password='sha1:9f94b40a5367:4ac7ee93d6115e200be852302429db4816bcfd61'">>/home/user/.jupyter/jupyter_notebook_config.py
+
+CMD ["bash", "-c", "source /etc/bash.bashrc && jupyter lab --notebook-dir=/home/user/workspace --ip 0.0.0.0 --no-browser --allow-root"]
+# CMD ["bash", "-c", "source /etc/bash.bashrc && jupyter lab --notebook-dir=/home/user/workspace --ip 0.0.0.0 --no-browser"]

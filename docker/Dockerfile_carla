@@ -1,0 +1,26 @@
+# Make sure drivers are >= 390
+# docker run --gpus all --name="carla" --network=carla_lab_network -d carla:latest
+
+FROM nvidia/opengl:1.0-glvnd-runtime-ubuntu18.04
+#FROM nvidia/vulkan:1.1.121-cuda-10.1-alpha
+
+RUN packages='libsdl2-2.0' \
+	&& apt-get update && apt-get install -y $packages --no-install-recommends \
+	&& rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m carla
+
+COPY --chown=carla:carla . /home/carla
+
+USER carla
+WORKDIR /home/carla
+
+ENV SDL_VIDEODRIVER=offscreen
+
+CMD ./CarlaUE4.sh -carla-rpc-port=2000 -carla-streaming-port=2001 -opengl -carla-server -carla-no-hud
+
+#I found after adding -opengl it works ok!
+#so the server command was
+#SDL_VIDEODRIVER=offscreen SDL_HINT_CUDA_DEVICE=0 ./Dist/CARLA_Shipping_0.9.6-28-#g714f8c4/LinuxNoEditor/CarlaUE4.sh -ResX=800 -ResY=600 -nosound -windowed -opengl
+
+# https://github.com/docker/compose/issues/6691
