@@ -55,7 +55,9 @@ RUN pip install --user jupyter notebook jupyterlab matplotlib ipykernel \
 	numpy pandas pygame \
 	jupyter_http_over_ws  \
 	tensorboardX \ 
-	seaborn
+	seaborn \
+        jupyterlab-git
+
 RUN jupyter labextension install --no-build @jupyter-widgets/jupyterlab-manager @jupyterlab/git ipyvolume jupyter-threejs @jupyterlab/toc && jupyter lab build
 
 #&& jupyter labextension install --no-build ipyvolume 

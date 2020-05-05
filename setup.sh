@@ -90,7 +90,7 @@ cd lab/
 docker build -t lab .
 echo 'lab build'
 
-if [ $cu_version == '101']
+if [ $cu_version == '101' ]
 then
   docker run --gpus all --name="lab" --network=$network_name -p 8888:8888 -p 6006:6006 -v $directory_flag:/home/user/workspace/ -d lab
 else
@@ -98,5 +98,7 @@ else
 fi
 
 #Run as a root
-cd ../../.. && chmod -R 777 carla_racetrack_BA
-echo "Alles gutes mein Freund!"
+[ "$EUID" != 0 ] || exec sudo bash "$0" "$@"
+cd ../../.. && sudo chmod -R 777 carla_racetrack_BA
+cd carla_racetrack_BA && rm -rf LinuxNoEditor
+echo "Alles gute mein Freund!"
