@@ -1,8 +1,8 @@
-<a href="http://fvcproductions.com"><img src="https://avatars1.githubusercontent.com/u/4284691?v=3&s=200" title="FVCproductions" alt="FVCproductions"></a>
-
-<!-- [![FVCproductions](https://avatars1.githubusercontent.com/u/4284691?v=3&s=200)](http://fvcproductions.com) -->
-
-***INSERT GRAPHIC HERE (include hyperlink in image)***
+<p align="center">
+  <img height="60" src="https://carla.org//img/logo/carla-black-m.png" />
+  <img height="60" src="https://devblogs.nvidia.com/wp-content/uploads/2017/04/pytorch-logo-dark.png" />
+  <img height="60" src="https://avatars1.githubusercontent.com/u/22800682?v=4" />
+</p>
 
 # Carla Racetrack BS
 
@@ -62,7 +62,6 @@
 - [Contributing](#contributing)
 - [Team](#team)
 - [FAQ](#faq)
-- [Support](#support)
 - [License](#license)
 
 
@@ -84,9 +83,9 @@ let generateProject = project => {
 ---
 
 ## Installation
+Requires Docker (>=19.03), NVIDIA driver and nvidia-docker (see how to install it [here](https://github.com/NVIDIA/nvidia-docker)). Tested on Ubuntu 18.04.
 
-- All the `code` required to get started
-- Images of what it should look like
+* default password is: 'ridin dirty', but you can change it in dockerfiles by insertting your own sha password.
 
 ### Clone
 
@@ -177,18 +176,9 @@ Reach out to me at one of the following places!
 
 ---
 
-## Donations (Optional)
-
-- You could include a <a href="https://cdn.rawgit.com/gratipay/gratipay-badge/2.3.0/dist/gratipay.png" target="_blank">Gratipay</a> link as well.
-
-[![Support via Gratipay](https://cdn.rawgit.com/gratipay/gratipay-badge/2.3.0/dist/gratipay.png)](https://gratipay.com/fvcproductions/)
-
-
----
 
 ## License
 
 [![License](http://img.shields.io/:license-mit-blue.svg?style=flat-square)](http://badges.mit-license.org)
 
 - **[MIT license](http://opensource.org/licenses/mit-license.php)**
-- Copyright 2015 © <a href="http://fvcproductions.com" target="_blank">FVCproductions</a>.

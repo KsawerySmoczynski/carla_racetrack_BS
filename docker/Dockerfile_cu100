@@ -93,6 +93,6 @@ EXPOSE 8888
 
 RUN ${PYTHON} -m ipykernel.kernelspec
 
-RUN echo "c.NotebookApp.password='sha1:9f94b40a5367:4ac7ee93d6115e200be852302429db4816bcfd61'">>/root/.jupyter/jupyter_notebook_config.py
+RUN echo "c.NotebookApp.password='sha1:8e2833f259b0:5d009ee10e42b5bcd9bbee996c446b8536406589'">>/root/.jupyter/jupyter_notebook_config.py
 
 CMD ["bash", "-c", "source /etc/bash.bashrc && jupyter lab --notebook-dir=/workspace --ip 0.0.0.0 --no-browser --allow-root"]

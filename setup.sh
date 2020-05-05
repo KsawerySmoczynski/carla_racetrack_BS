@@ -86,16 +86,16 @@ echo 'carla container ip acquired and saved'
 echo "{\"carla_ip\": \"$carla_ip\"}"
 
 cd lab/
-#docker build -t lab --build-arg USER_ID=$(id -u) --build-arg GROUP_ID=$(id -g) . # <- in case of using user setup
-docker build -t lab .
-echo 'lab build'
-
 if [ $cu_version == '101' ]
 then
-  docker run --gpus all --name="lab" --network=$network_name -p 8888:8888 -p 6006:6006 -v $directory_flag:/home/user/workspace/ -d lab
+    docker build -t lab --build-arg USER_ID=$(id -u) --build-arg GROUP_ID=$(id -g) . # <- in case of using user setup
+    docker run --gpus all --name="lab" --network=$network_name -p 8888:8888 -p 6006:6006 -v $directory_flag:/home/user/workspace/ -d lab
 else
-    docker run --gpus all --name="lab" --network=$network_name -p 8888:8888 -p 6006:6006 -v $directory_flag:/workspace/ -d lab
+    docker build -t lab .
+    docker run --gpus all --name="lab" --network=$network_name -p 8888:8888 -p 6006:6006 -v $directory_flag:/workspace/ -d    
 fi
+echo 'lab build and running'
+
 
 #Run as a root
 [ "$EUID" != 0 ] || exec sudo bash "$0" "$@"
