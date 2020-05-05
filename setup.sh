@@ -27,7 +27,10 @@ function margs_check () {
 
 function rebuild () {
   docker kill carla lab
+  docker rm carla lab
+  docker network rm carla_lab_network
   echo "Images killed"
+
   docker image rm -f carla
   echo "carla removed"
   docker image rm -f lab
