@@ -3,6 +3,7 @@
 
 FROM nvidia/cuda:10.1-base-ubuntu18.04
 
+# git here https://stackoverflow.com/questions/50837605/git-install-fails-in-dockerfile
 # Install some basic utilities
 RUN apt-get update && apt-get install -y \
     curl \
@@ -56,12 +57,13 @@ RUN conda install -y -c pytorch \
 
 ENV PATH=/home/user/.local/bin:$PATH
 
-RUN pip install --user jupyter notebook jupyterlab matplotlib ipykernel \
+RUN pip install --user --no-cache jupyter notebook jupyterlab matplotlib ipykernel \
 	numpy pandas pygame \
 	jupyter_http_over_ws  \
 	tensorboardX \ 
 	seaborn \
-        jupyterlab-git
+        jupyterlab-git \
+	sympy
 
 RUN jupyter labextension install --no-build @jupyter-widgets/jupyterlab-manager ipyvolume jupyter-threejs @jupyterlab/toc && jupyter lab build
 
