@@ -53,7 +53,7 @@ def run_client(args):
 
     pass
 
-def run_episode(controller, sensors, way_points, ) -> (int, list, dict, float):
+def run_episode(controller, sensors, way_points) -> (int, list, dict, float):
 
     pass
 
