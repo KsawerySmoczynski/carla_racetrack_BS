@@ -63,9 +63,13 @@ RUN pip install --user --no-cache jupyter notebook jupyterlab matplotlib ipykern
 	tensorboardX \ 
 	seaborn \
         jupyterlab-git \
-	sympy
+	sympy \
+	jupyter-lsp \ 
+	xeus-python==0.7.1 \ 
+	ptvsd \
+RUN jupyter labextension install --no-build @jupyter-widgets/jupyterlab-manager ipyvolume jupyter-threejs @jupyterlab/toc @jupyterlab/debugger @krassowski/jupyterlab-lsp && jupyter lab build
 
-RUN jupyter labextension install --no-build @jupyter-widgets/jupyterlab-manager ipyvolume jupyter-threejs @jupyterlab/toc && jupyter lab build
+RUN pip install --user --no-cache python-language-server[all]
 
 RUN mkdir -p /home/user/workspace/env && chmod -R a+rwx /home/user/workspace/
 
