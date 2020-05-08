@@ -94,11 +94,6 @@ else
     docker build -t lab .
     docker run --gpus all --name="lab" --network=$network_name -p 8888:8888 -p 6006:6006 -v $directory_flag:/workspace/ -d    
 fi
-echo 'lab build and running'
+echo 'lab built and running'
 
-
-#Run as a root
-[ "$EUID" != 0 ] || exec sudo bash "$0" "$@"
-cd ../../.. && sudo chmod -R 777 carla_racetrack_BA
-cd carla_racetrack_BA && rm -rf LinuxNoEditor
 echo "Alles gute mein Freund!"

@@ -7,12 +7,11 @@ class Controller(metaclass=ABCMeta):
         pass
 
     @staticmethod
-    def _calc_closest_dists_and_location(measurements, pts_2D):
-        location = np.array([
-            measurements.player_measurements.transform.location.x,
-            measurements.player_measurements.transform.location.y,
-        ])
-        dists = np.linalg.norm(pts_2D - location, axis=1)
+    def _calc_closest_dists_and_location(actor_location_3D:np.array, pts_3D:np.array):
+
+        # Calculates
+        dists = np.linalg.norm(pts_3D - actor_location_3D, axis=1)
         which_closest = np.argmin(dists)
-        return which_closest, dists, location
+
+        return which_closest, dists, actor_location_3D
 

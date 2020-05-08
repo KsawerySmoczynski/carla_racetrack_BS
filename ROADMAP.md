@@ -42,3 +42,7 @@
     
 - Loss liczymy pomiędzy wartością wynikającą z modelu -> początkowo MPC, a potem z sieci.
 - Jesteśmy w stanie równolegle zrzucać auta w losowych 50 miejscach i liczyć loss z każdego z działań. przeprowadzać cały batch jednocześnie.
+
+# READ
+- [Medium A3C](https://medium.com/emergent-future/simple-reinforcement-learning-with-tensorflow-part-8-asynchronous-actor-critic-agents-a3c-c88f72a5e9f2)
+- [Thesis](https://esc.fnwi.uva.nl/thesis/centraal/files/f285129090.pdf)
