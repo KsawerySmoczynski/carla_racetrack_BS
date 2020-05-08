@@ -12,10 +12,15 @@ import matplotlib.pyplot as plt
 import carla
 
 #Local imports
-from spawn import df_to_spawn_points, to_transform
+# from spawn import df_to_spawn_points, to_transform
+# from control.mpc_control import MPCController
+from src.spawn import df_to_spawn_points, to_transform
+from src.control.mpc_control import MPCController
+
 
 #Configs
 from src.config import CARLA_IP
+from src.config import toggle_world
 
 # spectator = world.get_spectator()
 
@@ -24,14 +29,17 @@ def run_client(args):
     #   check if loaded map is target map, if true proceed if false try to load desired world if other actor on map raise error -> or write error and close
 
     # Connecting to client
-    client = carla.Client(args.host, args.port)
+    # client = carla.Client(args.host, args.port)
+    client = carla.Client('localhost', 2000) #local
     client.set_timeout(5.0)  # seconds
     # load world desired condition -> config client does that
     world = client.load_world(args.map)
     if args.synchronous:
         settings = world.get_settings()
-        settings.synchronous_mode = True  # Enables synchronous mode
+        settings.synchronous_mode = True# Enables synchronous mode
+        settings.fixed_delta_seconds = 1/args.frames
         world.apply_settings(settings)
+
     blueprint_library = world.get_blueprint_library()
     vehicle = blueprint_library.filter('*aud*')[0] # -> change it to be parametric, maybe shuffle each time to add robustness
 
@@ -46,7 +54,10 @@ def run_client(args):
     spawn_points_np = df_to_spawn_points(spawn_points_df)
     spawn_points = [to_transform(sp) for sp in spawn_points_np]
     # initialize proper controller
-    #
+
+    if args.controller is 'MPC':
+        controller = MPCController(target_speed=60.)
+
     # episodes loop
     #   randomly choose start point, flip spawn points so that last one will be prior to starting one -> way_points
     #   create actor and attach sensors -> pass it as a batch
@@ -86,18 +97,25 @@ def main():
     argparser.add_argument(
         '--host',
         metavar='H',
-        default='localhost',
+        default=CARLA_IP,
         help='IP of the host server (default: localhost)')
     argparser.add_argument(
         '--port',
         metavar='P',
         default=2000,
+        type=int,
         help='Port on the host server (default: 2000)')
     argparser.add_argument(
         '--synchronous',
         metavar='S',
         default=True,
         help='If to run in synchronous mode (currently only this option is avialable)')
+    argparser.add_argument(
+        '--frames',
+        metavar='F',
+        default=30,
+        type=float,
+        help='Number of frames per second, dont set below 10, use with --synchronous flag only')
 
     #World configs
 
@@ -106,7 +124,18 @@ def main():
         metavar='M',
         default='circut_spa',
         help='Avialable maps: "circut_spa", "RaceTrack", "Racetrack2". Default: "circut_spa"')
-    args = argparser.parse_known_args()
+
+
+    #Controller configs
+    argparser.add_argument(
+        '--controller',
+        metavar='C',
+        default='MPC',
+        help='Avialable controllers: "MPC", "NN", Default: "circut_spa"')
+
+    # args = argparser.parse_args()       #for purpose of
+    args = argparser.parse_known_args()[0]
+
     #asynchronous config client for world parameters and loading
 
     # run client from args -> try pool -> multiprocessing for different GPUS. Clients cant affect world settings,
