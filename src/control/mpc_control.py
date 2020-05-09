@@ -12,25 +12,20 @@
 # Implementation in torch https://locuslab.github.io/mpc.pytorch/
 
 #THIS IS WITH GEKKO
-
-import os
-import sys
-sys.path.append(f'{os.getcwd()}/../src/') #final
-sys.path.append(f'{os.getcwd()}/src') #for purpose of tests
-sys.path.append(f'{os.getcwd()}/src/control') #for purpose of tests
-
 import random
+
+import carla
 import numpy as np
 
 from scipy.optimize import minimize
-from scipy.interpolate import splprep, splev
 import sympy as sym
 from sympy.tensor.array import derive_by_array
 sym.init_printing()
 
-from abstract_control import Controller
-
+#FIX RELATIVE IMPORTS
+from control.abstract_control import Controller
 from config import STEER_BOUNDS, THROTTLE_BOUNDS
+from spawn import numpy_to_transform, transform_to_numpy
 
 
 class _EqualityConstraints(object):
@@ -186,11 +181,12 @@ class MPCController(Controller):
 
         return cost_func, cost_grad_func, constr_funcs
 
+    def control(self, pts_3D, actor:carla.Vehicle, sensors_info):
 
-    def control(self, pts_2D, measurements, depth_array):
         which_closest, _, location = self._calc_closest_dists_and_location(
-            measurements,
-            pts_2D
+        # which_closest, _, location = _calc_closest_dists_and_location(
+            transform_to_numpy(actor.get_transform())[:3], #without yaws
+            pts_3D
         )
 
         # Stabilizes polynomial fitting
@@ -198,12 +194,15 @@ class MPCController(Controller):
         # NOTE: `which_closest_shifted` might become < 0, but the modulo operation below fixes that
 
         indeces = which_closest_shifted + self.steps_poly*np.arange(self.poly_degree+1)
-        indeces = indeces % pts_2D.shape[0]
-        pts = pts_2D[indeces]
+        indeces = which_closest_shifted + 30*np.arange(3+1)
+        indeces = indeces % pts_3D.shape[0]
+        pts = pts_3D[indeces]
 
-        orient = measurements.player_measurements.transform.orientation
-        v = measurements.player_measurements.forward_speed * 3.6 # km / h
+        orient = measurements.player_measurements.transform.orientation #zdaje się, że azymut
+        v = measurements.player_measurements.forward_speed * 3.6 # km / h #how to get speed?????????
+
         ψ = np.arctan2(orient.y, orient.x)
+        ψ = actor.get_transform().rotation.yaw
 
         cos_ψ = np.cos(ψ)
         sin_ψ = np.sin(ψ)

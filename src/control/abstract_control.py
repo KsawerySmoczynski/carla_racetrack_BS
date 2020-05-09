@@ -3,7 +3,7 @@ import numpy as np
 
 class Controller(metaclass=ABCMeta):
     @abstractmethod
-    def control(self, pts_2D, measurements, depth_array):
+    def control(self, waypoints, actor_info, sensors_info):
         pass
 
     @staticmethod
@@ -12,6 +12,8 @@ class Controller(metaclass=ABCMeta):
         # Calculates
         dists = np.linalg.norm(pts_3D - actor_location_3D, axis=1)
         which_closest = np.argmin(dists)
+        # calc distance to finish from len(waypoints)/n next
+        # Length of the track / num points
 
         return which_closest, dists, actor_location_3D
 

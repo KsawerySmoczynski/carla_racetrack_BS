@@ -1,8 +1,14 @@
+import carla
 import numpy as np
 import pandas as pd
 from scipy.interpolate import splprep, splev
 
 from carla import Transform, Location, Rotation
+
+numpy_to_transform = lambda point: Transform(Location(point[0], point[1], point[2]), Rotation(yaw=point[3], pitch=0, roll=0))
+transform_to_numpy = lambda transform: np.array([transform.location.x, transform.location.y, transform.location.z, transform.rotation.yaw])
+numpy_to_location = lambda point: Location(point[0], point[1], point[2])
+location_to_numpy = lambda location: np.array([location.x, location.y, location.z])
 
 
 def df_to_spawn_points(data: pd.DataFrame, n:int=10000, inverse:bool=False) -> list:
@@ -30,4 +36,12 @@ def calc_azimuth(pointA:tuple, pointB:tuple) -> float:
 
     return alpha
 
-to_transform = lambda point: Transform(Location(point[0], point[1], point[2]), Rotation(yaw=point[3], pitch=0, roll=0))
+def calc_speed(actor:carla.Vehicle, framerate:int) -> float:
+    vehicle_location = location_to_numpy(actor.get_location())
+    speed = location_to_numpy(actor.get_velocity()) # -> jako prędkość na sekundę? odległość przebyta w ciągu następnej sekundy? czy poprzedniej?
+
+    distance = np.linalg.norm([vehicle_location-speed]) #meters/frame
+    speed_kmh = distance * framerate * 1000/3600
+
+
+
