@@ -53,12 +53,16 @@ def calc_speed(actor:carla.Vehicle, framerate:int) -> float:
 def to_vehicle_control(gas_brake:float, steer:float) -> carla.VehicleControl:
     if gas_brake > 0:
         return carla.VehicleControl(throttle = gas_brake, steer=steer, reverse=False)
+    elif (gas_brake < 0.5) & (gas_brake > 0.2) :
+        return carla.VehicleControl(throttle=0, steer=steer, reverse=False)
+    elif (gas_brake < 0.2) & (gas_brake > -0.5) :
+        return carla.VehicleControl(throttle=0, brake=-gas_brake-0.5, steer=steer, reverse=False)
     else:
         return carla.VehicleControl(throttle = -gas_brake, steer=-steer, reverse=True)
 
 def set_spectator_above_actor(world, actor):
     spectator = world.get_spectator()
     trasform = carla.Transform((actor.get_location() + carla.Location(0, 0, 15)),
-                    carla.Rotation(pitch=-25, yaw=actor.get_transform().rotation.yaw))
+                    carla.Rotation(pitch=-15, yaw=actor.get_transform().rotation.yaw))
     spectator.set_transform(trasform)
 

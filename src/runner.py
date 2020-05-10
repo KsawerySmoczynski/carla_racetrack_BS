@@ -57,7 +57,7 @@ def run_client(args):
 
     # Controller initialization
     if args.controller is 'MPC':
-        controller = MPCController(target_speed=90., steps_ahead=10)
+        controller = MPCController(target_speed=140., steps_ahead=16)
 
     # episodes loop
     for episode_idx in range(args.num_episodes): # may be useless at this moment
@@ -158,15 +158,18 @@ def run_episode(world:carla.World, controller, vehicle_bp:carla.ActorBlueprint,
             actor.apply_control(to_vehicle_control(one_log_dict['throttle'], one_log_dict['steer']))
             world.tick()
             print(str(velocity_to_kmh(actor.get_velocity())))
-            if i % 50 == 0:
+            if ((velocity_to_kmh(actor.get_velocity()) < 20) & (i % 10 == 0)) or (i % 50 == 0):
                 set_spectator_above_actor(world, actor)
-            
+
             # time.sleep(0.005)
-        # Actor apply control
-        # Tick
-        # Calculate reward based on distance
+
+        # Add tensorboard -> first thing. We have to log experimeents from now on.
+        # Explore MPC configurations
+        # Calculate reward based on distance ->
         # append s, a, r, s' to logging structures -> states can be indexes in sensor data storages
+        # unpack_batch(batch, net, last_val_gamma):
         # calculate for ex. distance and add to separate informative logging structure
+        # Uruchomienie 4 instancji środowiska?
 
     if STORE_DATA:
         sensor_data = {'depth': depth_data,
