@@ -7,12 +7,12 @@ import pandas as pd
 import carla
 
 #Local imports
-from spawn import df_to_spawn_points, numpy_to_transform
+from spawn import df_to_spawn_points, numpy_to_transform, to_vehicle_control, set_spectator_above_actor, velocity_to_kmh
 from control.mpc_control import MPCController
 
 
 #Configs
-from config import CARLA_IP, DATA_PATH, STORE_DATA
+from config import CARLA_IP, DATA_PATH, STORE_DATA, IMAGE_DOWNSIZE_FACTOR, FRAMERATE
 from config import toggle_world
 
 
@@ -34,7 +34,7 @@ def run_client(args):
         world.apply_settings(settings)
 
     blueprint_library = world.get_blueprint_library()
-    vehicle_bp = blueprint_library.filter('*aud*')[0] # -> change it to be parametric, maybe shuffle each time to add robustness
+    vehicle_bp = blueprint_library.find('vehicle.audi.tt')  #filter('*tt*')[0] # -> change it to be parametric, maybe shuffle each time to add robustness
 
     # create config dict for raport
     #
@@ -44,7 +44,7 @@ def run_client(args):
 
     # load spawnpoints from csv -> generate spawn points from notebooks/20200414_setting_points.ipynb
     spawn_points_df = pd.read_csv(f'{DATA_PATH}/spawn_points/{args.map}.csv')
-    spawn_points = df_to_spawn_points(spawn_points_df, n=1000, inverse=False) #We keep it here in order to have one way simulation within one script
+    spawn_points = df_to_spawn_points(spawn_points_df, n=10000, inverse=False) #We keep it here in order to have one way simulation within one script
 
     #Sensors initialization
     sensors = {}
@@ -57,7 +57,7 @@ def run_client(args):
 
     # Controller initialization
     if args.controller is 'MPC':
-        controller = MPCController(target_speed=60.)
+        controller = MPCController(target_speed=90., steps_ahead=10)
 
     # episodes loop
     for episode_idx in range(args.num_episodes): # may be useless at this moment
@@ -94,13 +94,13 @@ def run_episode(world:carla.World, controller, vehicle_bp:carla.ActorBlueprint,
 
     # Ordering spawn points
     start_point_idx = int(np.random.randint(len(spawn_points))) # -> save for logging
-    waypoints = np.concatenate([spawn_points[start_point_idx:, :], spawn_points[:start_point_idx, :]]) #delete yaw column
+    waypoints = np.concatenate([spawn_points[start_point_idx:, :], spawn_points[:start_point_idx, :]])[:,:3] #delete yaw column
 
     # SPAWN ACTOR -> TIC AS MANY TIMES FOR HIM TO STABILIZE
     actor = world.spawn_actor(vehicle_bp, numpy_to_transform(spawn_points[start_point_idx]))
     actor.apply_control(carla.VehicleControl(brake=1.))
     spectator = world.get_spectator()
-    spectator.set_transform(numpy_to_transform(spawn_points[start_point_idx - 5]))
+    spectator.set_transform(numpy_to_transform(spawn_points[start_point_idx-30]))
     actor_pos = None
     world.tick()
     world.tick()
@@ -112,13 +112,12 @@ def run_episode(world:carla.World, controller, vehicle_bp:carla.ActorBlueprint,
         world.tick()
         n_tics += 1
     # not really
-    actor.destroy()
-    world.tick()
 
     #ATTACH SENSORS
-    to_array = lambda img: np.asarray(img.raw_data, dtype=np.int16).reshape(img.height, img.width, -1)
+    to_array = lambda img: np.asarray(img.raw_data, dtype=np.int16).reshape(img.height, img.width, 4) # 4 because image is in BRGB format
+    to_rgb_resized = lambda img: img[...,:3][::IMAGE_DOWNSIZE_FACTOR,::IMAGE_DOWNSIZE_FACTOR,::-1] #making it RGB from BRGB with [...,:3][...,::-1]
     depth_camera = world.spawn_actor(sensors['depth']['blueprint'], sensors['depth']['transform'], attach_to=actor) #rigid attachment by default
-    depth_camera.listen(lambda img_raw: (img_raw.convert(sensors['depth']['color_converter']), depth_data.append(to_array(img_raw)))) # o lol działa
+    depth_camera.listen(lambda img_raw: (img_raw.convert(sensors['depth']['color_converter']), depth_data.append(to_rgb_resized(to_array(img_raw))))) # o lol działa
     # sensors['depth']['actor'] = depth_camera
 
     # Release handbrake
@@ -144,12 +143,25 @@ def run_episode(world:carla.World, controller, vehicle_bp:carla.ActorBlueprint,
 
 
         # remember that distance to the finish should be known to NN actor, as a part of actuator, or it shouldn't?
-        steer, gas_brake = controller.control(
-            actor,
-            waypoints,
-            sensors_info
-        )
+         # steer, gas_brake = controller.control(
+        #     actor,
+        #     waypoints,
+        #     sensors_info
+        # )
+        for i in range(5000):
+            one_log_dict = controller.control(
+                actor,
+                waypoints,
+                sensors_info
+            )
 
+            actor.apply_control(to_vehicle_control(one_log_dict['throttle'], one_log_dict['steer']))
+            world.tick()
+            print(str(velocity_to_kmh(actor.get_velocity())))
+            if i % 50 == 0:
+                set_spectator_above_actor(world, actor)
+            
+            # time.sleep(0.005)
         # Actor apply control
         # Tick
         # Calculate reward based on distance
@@ -195,7 +207,7 @@ def main():
     argparser.add_argument(
         '--frames',
         metavar='F',
-        default=30,
+        default=FRAMERATE,
         type=float,
         help='Number of frames per second, dont set below 10, use with --synchronous flag only')
 

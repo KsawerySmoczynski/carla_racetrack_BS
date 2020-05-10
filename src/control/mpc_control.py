@@ -25,7 +25,7 @@ sym.init_printing()
 #FIX RELATIVE IMPORTS
 from control.abstract_control import Controller
 from config import STEER_BOUNDS, THROTTLE_BOUNDS
-from spawn import numpy_to_transform, transform_to_numpy
+from spawn import numpy_to_transform, transform_to_numpy, velocity_to_kmh
 
 
 class _EqualityConstraints(object):
@@ -181,7 +181,7 @@ class MPCController(Controller):
 
         return cost_func, cost_grad_func, constr_funcs
 
-    def control(self, pts_3D, actor:carla.Vehicle, sensors_info):
+    def control(self, actor:carla.Vehicle, pts_3D, sensors_info):
 
         which_closest, _, location = self._calc_closest_dists_and_location(
         # which_closest, _, location = _calc_closest_dists_and_location(
@@ -196,15 +196,17 @@ class MPCController(Controller):
         indeces = which_closest_shifted + self.steps_poly*np.arange(self.poly_degree+1)
         indeces = which_closest_shifted + 30*np.arange(3+1)
         indeces = indeces % pts_3D.shape[0]
-        pts = pts_3D[indeces]
+        pts = pts_3D[:,:2][indeces] #converting to 2d points
 
-        orient = measurements.player_measurements.transform.orientation #zdaje się, że azymut
-        v = measurements.player_measurements.forward_speed * 3.6 # km / h #how to get speed?????????
+        # orient = measurements.player_measurements.transform.orientation #zdaje się, że azymut
+        v = velocity_to_kmh(actor.get_velocity()) # km / h #how to get speed?????????
 
-        ψ = np.arctan2(orient.y, orient.x)
-        ψ = actor.get_transform().rotation.yaw
+        # return v
 
-        cos_ψ = np.cos(ψ)
+        # ψ = np.arctan2(orient.y, orient.x) #-> w radianach
+        ψ = np.radians(actor.get_transform().rotation.yaw) #adding 180 as carla returns yaw degrees in (-180, 180) range
+
+        cos_ψ = np.cos(ψ) #wartość cosinusa z radianów
         sin_ψ = np.sin(ψ)
 
         x, y = location[0], location[1]
@@ -215,10 +217,11 @@ class MPCController(Controller):
         cte = poly[-1]
         eψ = -np.arctan(poly[-2])
 
+        # return cte, eψ
         init = (0, 0, 0, v, cte, eψ, *poly)
         self.state0 = self.get_state0(v, cte, eψ, self.steer, self.throttle, poly)
         result = self.minimize_cost(self.bounds, self.state0, init)
-
+        # return result
         # Left here for debugging
         # self.steer = -0.6 * cte - 5.5 * (cte - prev_cte)
         # prev_cte = cte
@@ -233,8 +236,6 @@ class MPCController(Controller):
         one_log_dict = {
             'x': x,
             'y': y,
-            'orient_x': orient.x,
-            'orient_y': orient.y,
             'steer': self.steer,
             'throttle': self.throttle,
             'speed': v,

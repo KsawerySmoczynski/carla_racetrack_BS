@@ -9,7 +9,9 @@ numpy_to_transform = lambda point: Transform(Location(point[0], point[1], point[
 transform_to_numpy = lambda transform: np.array([transform.location.x, transform.location.y, transform.location.z, transform.rotation.yaw])
 numpy_to_location = lambda point: Location(point[0], point[1], point[2])
 location_to_numpy = lambda location: np.array([location.x, location.y, location.z])
+velocity_to_kmh = lambda v: float(3.6 * np.math.sqrt(v.x ** 2 + v.y ** 2 + v.z ** 2))
 
+# porównaj prędkość z funkcji, z wyliczonej z przemieszczenia między klatkami
 
 def df_to_spawn_points(data: pd.DataFrame, n:int=10000, inverse:bool=False) -> list:
 
@@ -40,8 +42,23 @@ def calc_speed(actor:carla.Vehicle, framerate:int) -> float:
     vehicle_location = location_to_numpy(actor.get_location())
     speed = location_to_numpy(actor.get_velocity()) # -> jako prędkość na sekundę? odległość przebyta w ciągu następnej sekundy? czy poprzedniej?
 
+    #Współrzędne metryczne, różnica między klatkami = ilość pokonanych metrów w klatce -> * klatki na sekundę * 1000/3600 -> km/h
+
+    v = actor.get_velocity()
+    kmh = float(3.6 * np.math.sqrt(v.x ** 2 + v.y ** 2 + v.z ** 2))
+
     distance = np.linalg.norm([vehicle_location-speed]) #meters/frame
     speed_kmh = distance * framerate * 1000/3600
 
+def to_vehicle_control(gas_brake:float, steer:float) -> carla.VehicleControl:
+    if gas_brake > 0:
+        return carla.VehicleControl(throttle = gas_brake, steer=steer, reverse=False)
+    else:
+        return carla.VehicleControl(throttle = -gas_brake, steer=-steer, reverse=True)
 
+def set_spectator_above_actor(world, actor):
+    spectator = world.get_spectator()
+    trasform = carla.Transform((actor.get_location() + carla.Location(0, 0, 15)),
+                    carla.Rotation(pitch=-25, yaw=actor.get_transform().rotation.yaw))
+    spectator.set_transform(trasform)
 
