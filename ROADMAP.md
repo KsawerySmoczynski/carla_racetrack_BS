@@ -1,5 +1,19 @@
 # Plan na najbliższy czas
-##1. Stworzenie MPC jeżdżącego po torze
+## Utworzyć system logowania informacji i model danych
+    * Tensorboard na zmienne parametry -> prędkość, wartości kontrolerów ogarnąć jak działa GlobalSummaryWriter
+    * Visdom -> do wizualizacji obrazów i lokalizacji auta na torze. Nie powielać informacji, wysyłać zapisane z dysku na front. Jak się nie uda to przemyśleć jak uprościć model
+    * Puścić MPC model w każdej konfiguracji i zapisać wszystkie informacje 
+
+##3. Uczymy sieć na mpc
+    - Przeczytaj train_on_depth! -> jego sieć prognozuje trasę, to nie jest reinforcement, 
+    dowiedz się jak przetworzyć ciągłe wartości na wartości akcji w dqn. -> papiery które Jacek przeczytał. 
+    - Trenujemy na 4 torach i testujemy na 2
+    - Okręślamy hiperparametry
+    - Zapisujemy najlepszy model
+    - spójrz na mechanizm weights -> gradient się poprostu bardziej liczy
+
+# Done 
+## Stworzenie MPC jeżdżącego po torze
     - [Najlepsze](https://towardsdatascience.com/the-final-step-control-783467095138)
     - [YT](https://www.youtube.com/watch?v=nqv6jFeVUYA)
     - [YT cars](https://www.youtube.com/watch?v=Gh8R4PVg1Zc)
@@ -8,19 +22,9 @@
     - [Model Predictive Control for Autonomous Vehicles](https://medium.com/@shubhra.pandit/model-predictive-control-for-autonomous-vehicles-1dc18348f651)
      
     Dane zapisane przez mpc traktujemy jako buffer. 
-    Puszczamy na wszystkich torach w każdą stronę czyli mamy 6 datasetów.      
-##2. Uczymy sieć na mpc
-    - Przeczytaj train_on_depth! -> jego sieć prognozuje trasę, to nie jest reinforcement, 
-    dowiedz się jak przetworzyć ciągłe wartości na wartości akcji w dqn. -> papiery które Jacek przeczytał. 
-    - Trenujemy na 4 torach i testujemy na 2
-    - Okręślamy hiperparametry
-    - Zapisujemy najlepszy model
-    - spójrz na mechanizm weights -> gradient się poprostu bardziej liczy
-##3. Tworzymy klasyczny target i train network.
-    - Uczymy sieć na podstawie sieci nauczonej na mpc.
-    - Tworzymy train i target network.  
+    Puszczamy na wszystkich torach w każdą stronę czyli mamy 6 datasetów.
     
-## Inne
+# Inne
 
 - Jak zaprojektować funkcję celu?
 - Jak wpiąć MPC aby była mierzalna za pomocą funkcji celu.
@@ -44,5 +48,4 @@
 - Jesteśmy w stanie równolegle zrzucać auta w losowych 50 miejscach i liczyć loss z każdego z działań. przeprowadzać cały batch jednocześnie.
 
 # READ
-- [Medium A3C](https://medium.com/emergent-future/simple-reinforcement-learning-with-tensorflow-part-8-asynchronous-actor-critic-agents-a3c-c88f72a5e9f2)
 - [Thesis](https://esc.fnwi.uva.nl/thesis/centraal/files/f285129090.pdf)

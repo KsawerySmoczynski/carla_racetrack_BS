@@ -9,21 +9,26 @@ import carla
 #Local imports
 from spawn import df_to_spawn_points, numpy_to_transform, to_vehicle_control, set_spectator_above_actor, velocity_to_kmh
 from control.mpc_control import MPCController
-
+from tensorboardX import SummaryWriter
 
 #Configs
-from config import CARLA_IP, DATA_PATH, STORE_DATA, IMAGE_DOWNSIZE_FACTOR, FRAMERATE
+from config import CARLA_IP, DATA_PATH, STORE_DATA, IMAGE_DOWNSIZE_FACTOR, FRAMERATE, TENSORBOARD_DATA
 from config import toggle_world
 
 
 def run_client(args):
-    # create client -> config client does that
-    #   check if loaded map is target map, if true proceed if false try to load desired world if other actor on map raise error -> or write error and close
+
+    # Initialize tensorboard -> initialize writer inside run episode so that every
+    if args.controller == 'MPC':
+        TARGET_SPEED = 90
+        STEPS_AHEAD = 10
+        writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_TS{TARGET_SPEED}_H{STEPS_AHEAD}_FRAMES{args.frames}', flush_secs=5)
+    else:
+        writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_FRAMES{args.frames}', flush_secs=5)
 
     # Connecting to client -> later package it in function which checks if the world is already loaded and if the settings are the same.
     # In order to host more scripts concurrently
-    # client = carla.Client(args.host, args.port)
-    client = carla.Client('localhost', 2000) #local
+    client = carla.Client('localhost', 2000)
     client.set_timeout(5.0)  # seconds
     # load world desired condition -> config client does that
     world = client.load_world(args.map)
@@ -57,13 +62,13 @@ def run_client(args):
 
     # Controller initialization
     if args.controller is 'MPC':
-        controller = MPCController(target_speed=140., steps_ahead=16)
+        controller = MPCController(target_speed=TARGET_SPEED, steps_ahead=STEPS_AHEAD)
 
     # episodes loop
     for episode_idx in range(args.num_episodes): # may be useless at this moment
         # Attach sensor to car -> has to save to global structure, maybe all of this should be inside run episode
 
-        status, actor_dict, env_dict, sensor_data = run_episode(world, controller, vehicle_bp, sensors, spawn_points, args)
+        status, actor_dict, env_dict, sensor_data = run_episode(world, controller, vehicle_bp, sensors, spawn_points, writer, args)
 
     # Save imgs, dicts, waypoints
     #
@@ -76,7 +81,7 @@ def run_client(args):
 
 
 def run_episode(world:carla.World, controller, vehicle_bp:carla.ActorBlueprint,
-                sensors:dict, spawn_points:np.array, args) -> (str, dict, dict, list):
+                sensors:dict, spawn_points:np.array, writer:SummaryWriter, args) -> (str, dict, dict, list):
     '''
 
     :param actor: vehicle
@@ -93,7 +98,7 @@ def run_episode(world:carla.World, controller, vehicle_bp:carla.ActorBlueprint,
     collisions_data = []
 
     # Ordering spawn points
-    start_point_idx = int(np.random.randint(len(spawn_points))) # -> save for logging
+    start_point_idx = int(np.random.randint(len(spawn_points))) # -> save for logging NOT TENSORBOARD
     waypoints = np.concatenate([spawn_points[start_point_idx:, :], spawn_points[:start_point_idx, :]])[:,:3] #delete yaw column
 
     # SPAWN ACTOR -> TIC AS MANY TIMES FOR HIM TO STABILIZE
@@ -111,7 +116,6 @@ def run_episode(world:carla.World, controller, vehicle_bp:carla.ActorBlueprint,
         actor_pos = actor.get_location()
         world.tick()
         n_tics += 1
-    # not really
 
     #ATTACH SENSORS
     to_array = lambda img: np.asarray(img.raw_data, dtype=np.int16).reshape(img.height, img.width, 4) # 4 because image is in BRGB format
@@ -148,7 +152,7 @@ def run_episode(world:carla.World, controller, vehicle_bp:carla.ActorBlueprint,
         #     waypoints,
         #     sensors_info
         # )
-        for i in range(5000):
+        for i in range(500):
             one_log_dict = controller.control(
                 actor,
                 waypoints,
@@ -156,12 +160,14 @@ def run_episode(world:carla.World, controller, vehicle_bp:carla.ActorBlueprint,
             )
 
             actor.apply_control(to_vehicle_control(one_log_dict['throttle'], one_log_dict['steer']))
+            writer.add_scalar(tag='throttle', scalar_value=one_log_dict['throttle'], global_step=i)
+            writer.add_scalar(tag='steer', scalar_value=one_log_dict['steer'], global_step=i)
+            writer.add_scalar(tag='velocity', scalar_value=velocity_to_kmh(actor.get_velocity()), global_step=i)
+
             world.tick()
-            print(str(velocity_to_kmh(actor.get_velocity())))
             if ((velocity_to_kmh(actor.get_velocity()) < 20) & (i % 10 == 0)) or (i % 50 == 0):
                 set_spectator_above_actor(world, actor)
-
-            # time.sleep(0.005)
+            time.sleep(0.005)
 
         # Add tensorboard -> first thing. We have to log experimeents from now on.
         # Explore MPC configurations
@@ -194,7 +200,7 @@ def main():
     argparser.add_argument(
         '--host',
         metavar='H',
-        default=CARLA_IP,
+        default='localhost',
         help='IP of the host server (default: localhost)')
     argparser.add_argument(
         '--port',
