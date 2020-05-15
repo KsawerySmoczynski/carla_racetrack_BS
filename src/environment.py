@@ -1,7 +1,6 @@
 import argparse
 import numpy as np
 import carla
-from flask import blueprints
 
 from config import IMAGE_DOWNSIZE_FACTOR, FRAMERATE
 from control.abstract_control import Controller

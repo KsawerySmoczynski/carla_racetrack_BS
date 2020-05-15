@@ -21,7 +21,7 @@ from tensorboardX import SummaryWriter
 #Configs
 #TODO Add dynamically generated foldername based on config settings and date.
 from config import DATA_PATH, STORE_DATA, FRAMERATE, TENSORBOARD_DATA, ALPHA, \
-    DATE_TIME, configure_simulation, SENSORS, VEHICLE
+    DATE_TIME, configure_simulation, SENSORS, VEHICLE, CARLA_IP
 
 from utils import save_episode_info, calc_distance, tensorboard_log, visdom_log, visdom_initialize_windows
 
@@ -36,7 +36,7 @@ def main():
     argparser.add_argument(
         '--host',
         metavar='H',
-        default='localhost',
+        default=CARLA_IP,
         help='IP of the host server (default: localhost)')
     argparser.add_argument(
         '--port',

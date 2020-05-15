@@ -31,7 +31,7 @@ SENSORS = {
 ALPHA = .9975
 
 def configure_simulation(args):
-    client = carla.Client('localhost', 2000)
+    client = carla.Client(args.host, args.port)
     client.set_timeout(5.0)  # seconds
 
     return client

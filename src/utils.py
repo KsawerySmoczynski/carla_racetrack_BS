@@ -78,6 +78,7 @@ def visdom_log(viz:visdom.Visdom, windows:dict, sensors:dict, state:dict, action
     viz.line(X=[step], Y=[reward], win=windows['reward'], update='append')
     viz.line(X=[step], Y=[action['gas_brake']], win=windows['gas_brake'], update='append')
     viz.line(X=[step], Y=[action['steer']], win=windows['steer'], update='append')
+    viz.line(X=[step], Y=[state['velocity']], win=windows['velocity'], update='append')
 
     if 'depth' in sensors.keys():
         img = sensors['depth'][-1]
