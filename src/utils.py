@@ -1,6 +1,7 @@
 import json
 import numpy as np
 import carla
+import visdom
 from tensorboardX import SummaryWriter
 
 from config import IMAGE_DOWNSIZE_FACTOR, DATE_TIME
@@ -8,6 +9,8 @@ from spawn import location_to_numpy, calc_azimuth, velocity_to_kmh
 
 to_array = lambda img: np.asarray(img.raw_data, dtype=np.int16).reshape(img.height, img.width, 4)  # 4 because image is in BRGB format
 to_rgb_resized = lambda img: img[..., :3][::IMAGE_DOWNSIZE_FACTOR, ::IMAGE_DOWNSIZE_FACTOR, ::-1]  # making it RGB from BRGB with [...,:3][...,::-1]
+
+
 
 def closest_checkpoint(actor:carla.Vehicle, checkpoints:np.array):
     actor_location = location_to_numpy(actor.get_location())
@@ -42,8 +45,52 @@ def calc_distance(actor_location:np.array, points_3D:np.array, cut:float=0.02) -
 
     return distance
 
+def visdom_initialize_windows(viz:visdom.Visdom, sensors:dict, location):
 
-def tensorboard_log(title:str, writer:SummaryWriter, state:dict, action:dict, reward:float, step:int):
+    windows = {}
+    if sensors['depth']:
+        windows['depth'] = viz.image(np.zeros((3, 75, 100)), opts=dict(caption='Depth', title='Depth sensor'))
+
+    if sensors['rgb']:
+        windows['rgb'] = viz.image(np.zeros((3, 75, 100)), opts=dict(caption='RGB', title='RGB camera'))
+
+    windows['trace'] = viz.line(X=[location[0]], Y=[location[1]], opts=dict(caption='Trace', title='Actor trace'))
+    windows['reward'] = viz.line(X=[0], Y=[0], opts=dict(caption='Rewards', title='Rewards received'))
+    windows['velocity'] = viz.line(X=[0], Y=[0], opts=dict(caption='Velocity', title='Velocity in kmh'))
+    windows['gas_brake'] = viz.line(X=[0], Y=[0], opts=dict(caption='Gas and brake', title='Gas and brake'))
+    windows['steer'] = viz.line(X=[0], Y=[0], opts=dict(caption='Steer', title='Steer angle'))
+
+    return windows
+
+def visdom_log(viz:visdom.Visdom, windows:dict, sensors:dict, state:dict, action:dict, reward:float, step:int) -> None:
+    '''
+
+    :param viz:
+    :param windows:
+    :param sensors:
+    :param state:
+    :param action:
+    :param reward:
+    :param step:
+    :return:
+    '''
+    viz.line(X=[state['location'][0]], Y=[state['location'][1]], win=windows['trace'], update='append')
+    viz.line(X=[step], Y=[reward], win=windows['reward'], update='append')
+    viz.line(X=[step], Y=[action['gas_brake']], win=windows['gas_brake'], update='append')
+    viz.line(X=[step], Y=[action['steer']], win=windows['steer'], update='append')
+
+    if 'depth' in sensors.keys():
+        img = sensors['depth'][-1]
+        img = np.moveaxis(img, 2, 0).copy().astype(np.uint8)
+        viz.image(img=img, win=windows['depth'])
+
+    if 'rgb' in sensors.keys():
+        img = sensors['rgb'][-1]
+        img = np.moveaxis(img, 2, 0).copy().astype(np.uint8)
+        viz.image(img=img, win=windows['rgb'])
+
+
+def tensorboard_log(title:str, writer:SummaryWriter, state:dict, action:dict, reward:float, step:int) -> None:
     '''
     Write logging info to tensorboard writer
     :param writer:

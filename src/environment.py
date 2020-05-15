@@ -109,7 +109,8 @@ class Agent:
         :param state:dict - current state of the agent with indeces of data
         :return: data:dict - dict containing sensor_name: data associated with state pairs
         '''
-        data = {sensor: [[self.sensors[sensor]['data'][idx] for idx in state[sensor]]] for sensor in self.sensors }
+        data = {sensor: [self.sensors[sensor]['data'][idx] for idx in state[sensor]] for sensor in self.sensors.keys() if sensor is not 'collisions'}
+        data['collisions'] = len(self.sensors['collisions']['data'])
         return data
 
     def initialize_vehicle(self):
@@ -153,7 +154,11 @@ class Agent:
 
         self.sensors_initialized = True
         print('Sensors initialized')
+        self._release_control()
+        print('Control released')
 
+    def _release_control(self):
+        self.actor.apply_control(carla.VehicleControl(throttle=0., brake=0., gear=1))
 
     def destroy(self, data:bool=False):
         '''
