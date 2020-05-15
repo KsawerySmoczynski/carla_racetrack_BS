@@ -3,7 +3,7 @@ import numpy as np
 
 class Controller(metaclass=ABCMeta):
     @abstractmethod
-    def control(self, waypoints, actor_info, sensors_info):
+    def control(self, state, pts_3D, sensors:dict=None):
         pass
 
     @staticmethod

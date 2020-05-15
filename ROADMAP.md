@@ -4,7 +4,7 @@
     * Visdom -> do wizualizacji obrazów i lokalizacji auta na torze. Nie powielać informacji, wysyłać zapisane z dysku na front. Jak się nie uda to przemyśleć jak uprościć model
     * Puścić MPC model w każdej konfiguracji i zapisać wszystkie informacje 
 
-##3. Uczymy sieć na mpc
+## Uczymy sieć na mpc
     - Przeczytaj train_on_depth! -> jego sieć prognozuje trasę, to nie jest reinforcement, 
     dowiedz się jak przetworzyć ciągłe wartości na wartości akcji w dqn. -> papiery które Jacek przeczytał. 
     - Trenujemy na 4 torach i testujemy na 2

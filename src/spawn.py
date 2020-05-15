@@ -53,16 +53,51 @@ def calc_speed(actor:carla.Vehicle, framerate:int) -> float:
 def to_vehicle_control(gas_brake:float, steer:float) -> carla.VehicleControl:
     if gas_brake > 0:
         return carla.VehicleControl(throttle = gas_brake, steer=steer, reverse=False)
-    elif (gas_brake < 0.5) & (gas_brake > 0.2) :
+    elif (gas_brake < 0.4) & (gas_brake > 0.) :
         return carla.VehicleControl(throttle=0, steer=steer, reverse=False)
-    elif (gas_brake < 0.2) & (gas_brake > -0.5) :
-        return carla.VehicleControl(throttle=0, brake=-gas_brake-0.5, steer=steer, reverse=False)
+    elif (gas_brake < 0.) & (gas_brake > -0.7) :
+        return carla.VehicleControl(throttle=0, brake=-gas_brake+0.3, steer=steer, reverse=False)
     else:
-        return carla.VehicleControl(throttle = -gas_brake, steer=-steer, reverse=True)
+        return carla.VehicleControl(throttle=-gas_brake, steer=-steer, reverse=True)
 
-def set_spectator_above_actor(world, actor):
-    spectator = world.get_spectator()
-    trasform = carla.Transform((actor.get_location() + carla.Location(0, 0, 15)),
-                    carla.Rotation(pitch=-15, yaw=actor.get_transform().rotation.yaw))
-    spectator.set_transform(trasform)
+def set_spectator_above_actor(spectator:carla.Actor, transform:np.array):
+    transform = numpy_to_transform(transform + [0, 0, 15, 0])
+    transform.rotation.pitch = -15
+    spectator.set_transform(transform)
 
+
+def sensors_config(blueprint_library:carla.BlueprintLibrary,
+                   depth:bool=True, collision:bool=True, rgb:bool=False) -> dict:
+    '''
+
+    :param blueprint_library:
+    :param depth:
+    :param collision:
+    :param camera:
+    :return: sensors
+    '''
+    sensors = {}
+    if depth:
+        depth_bp = blueprint_library.find('sensor.camera.depth')
+        depth_relative_transform = carla.Transform(carla.Location(1.0, 0, 1.4), carla.Rotation(-5., 0, 0))
+        cc = carla.ColorConverter.LogarithmicDepth
+        sensors['depth'] = {'blueprint': depth_bp,
+                            'transform': depth_relative_transform,
+                            'color_converter':cc}
+
+    if collision:
+        collision_bp = blueprint_library.find('sensor.other.collision')
+        collision_relative_transform = carla.Transform(carla.Location(0, 0, 0), carla.Rotation(0, 0, 0))
+        sensors['collisions'] = {
+            'blueprint': collision_bp,
+            'transform': collision_relative_transform
+                                }
+    if rgb:
+        rgb_bp = blueprint_library.find('sensor.camera.rgb')
+        rgb_relative_transform = carla.Transform(carla.Location(1.0, 0, 1.4), carla.Rotation(-5., 0, 0))
+        sensors['rgb'] = {
+            'blueprint': rgb_bp,
+            'transform': rgb_relative_transform,
+                            }
+
+    return sensors

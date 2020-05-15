@@ -1,24 +1,37 @@
+import datetime
 import json
 import carla
 
 config_dict = json.load(open('../config.json'))
 
+#General
+DATE_TIME = datetime.datetime.now().strftime('%Y%m%d_%H%M')
+
+#Storage config
 STORE_DATA = True
 DATA_PATH = '../data'
 TENSORBOARD_DATA = '../data/tensorboard'
 
+#World and simulator config
+CARLA_IP = config_dict['carla_ip']
+FRAMERATE = 30
+VEHICLE = 'vehicle.audi.tt'
+
+#Controller config
+IMAGE_DOWNSIZE_FACTOR = 8
 STEER_BOUNDS = (-1, 1)
 THROTTLE_BOUNDS = (-1,1)
-CARLA_IP = config_dict['carla_ip']
+SENSORS = {
+    'depth': True,
+    'collisions': True,
+    'rgb': False
+}
 
-IMAGE_DOWNSIZE_FACTOR = 8
+# RL config
+ALPHA = .9975
 
-FRAMERATE = 20
+def configure_simulation(args):
+    client = carla.Client('localhost', 2000)
+    client.set_timeout(5.0)  # seconds
 
-
-
-def toggle_world(world:carla.World, frames:int=FRAMERATE):
-    settings = world.get_settings()
-    settings.synchronous_mode = not settings.synchronous_mode
-    settings.fixed_delta_seconds = abs(float(settings.fixed_delta_seconds or 0) - 1/frames)
-    world.apply_settings(settings)
+    return client

@@ -181,11 +181,11 @@ class MPCController(Controller):
 
         return cost_func, cost_grad_func, constr_funcs
 
-    def control(self, actor:carla.Vehicle, pts_3D, sensors_info):
+    def control(self, state, pts_3D, sensors:dict=None):
 
         which_closest, _, location = self._calc_closest_dists_and_location(
         # which_closest, _, location = _calc_closest_dists_and_location(
-            transform_to_numpy(actor.get_transform())[:3], #without yaws
+            state['location'], #without yaws
             pts_3D
         )
 
@@ -194,17 +194,11 @@ class MPCController(Controller):
         # NOTE: `which_closest_shifted` might become < 0, but the modulo operation below fixes that
 
         indeces = which_closest_shifted + self.steps_poly*np.arange(self.poly_degree+1)
-        indeces = which_closest_shifted + 30*np.arange(3+1)
         indeces = indeces % pts_3D.shape[0]
         pts = pts_3D[:,:2][indeces] #converting to 2d points
 
-        # orient = measurements.player_measurements.transform.orientation #zdaje się, że azymut
-        v = velocity_to_kmh(actor.get_velocity()) # km / h #how to get speed?????????
-
-        # return v
-
-        # ψ = np.arctan2(orient.y, orient.x) #-> w radianach
-        ψ = np.radians(actor.get_transform().rotation.yaw) #adding 180 as carla returns yaw degrees in (-180, 180) range
+        v = state['velocity'] # km / h #how to get speed?????????
+        ψ = np.radians(state['yaw']) #adding 180 as carla returns yaw degrees in (-180, 180) range
 
         cos_ψ = np.cos(ψ) #wartość cosinusa z radianów
         sin_ψ = np.sin(ψ)
@@ -221,11 +215,6 @@ class MPCController(Controller):
         init = (0, 0, 0, v, cte, eψ, *poly)
         self.state0 = self.get_state0(v, cte, eψ, self.steer, self.throttle, poly)
         result = self.minimize_cost(self.bounds, self.state0, init)
-        # return result
-        # Left here for debugging
-        # self.steer = -0.6 * cte - 5.5 * (cte - prev_cte)
-        # prev_cte = cte
-        # self.throttle = clip_throttle(self.throttle, v, target_speed)
 
         if 'success' in result.message:
             self.steer = result.x[-self.steps_ahead]
@@ -233,25 +222,12 @@ class MPCController(Controller):
         else:
             print('Unsuccessful optimization')
 
-        one_log_dict = {
-            'x': x,
-            'y': y,
+        actions = {
             'steer': self.steer,
-            'throttle': self.throttle,
-            'speed': v,
-            'psi': ψ,
-            'cte': cte,
-            'epsi': eψ,
-            'which_closest': which_closest,
+            'gas_brake': self.throttle,
         }
-        for i, coeff in enumerate(poly):
-            one_log_dict['poly{}'.format(i)] = coeff
 
-        for i in range(pts_car.shape[0]):
-            for j in range(pts_car.shape[1]):
-                one_log_dict['pts_car_{}_{}'.format(i, j)] = pts_car[i][j]
-
-        return one_log_dict
+        return actions
 
     def get_state0(self, v, cte, epsi, a, delta, poly):
         a = a or 0

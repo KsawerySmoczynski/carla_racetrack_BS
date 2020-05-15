@@ -19,6 +19,9 @@
 # https://www.ijcai.org/Proceedings/2018/0444.pdf -> dojebańsza wersja
 # https://arxiv.org/pdf/1903.00827.pdf -> MEGA DOJEBAŃSZA WERSJA!!!!!!!!!!!!
 
+# Off-policy
+# https://towardsdatascience.com/the-false-promise-of-off-policy-reinforcement-learning-algorithms-c56db1b4c79a
+
 # ZABIERZ SOBIE BUILDING BLOCKI Z OPEN AI
 # https://github.com/openai/spinningup/tree/038665d62d569055401d91856abb287263096178/spinup/algos/pytorch/ddpg -> DDPG
 # https://github.com/openai/spinningup/blob/038665d62d569055401d91856abb287263096178/spinup/algos/pytorch/ddpg/core.py#L35
