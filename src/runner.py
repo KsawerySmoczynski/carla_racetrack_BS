@@ -117,7 +117,7 @@ def run_client(args):
     else:
         writer = None
 
-    viz = vis.Visdom() if args.visdom else None
+    viz = vis.Visdom(port=6006) if args.visdom else None
 
     # Connecting to client -> later package it in function which checks if the world is already loaded and if the settings are the same.
     # In order to host more scripts concurrently

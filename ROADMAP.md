@@ -5,7 +5,7 @@
     * Puścić MPC model w każdej konfiguracji i zapisać wszystkie informacje 
 
 ## Uczymy sieć na mpc
-    - Przeczytaj train_on_depth! -> jego sieć prognozuje trasę, to nie jest reinforcement, 
+    - Przeczytaj train_on_depth (https://github.com/asap-report/carla/tree/racetrack/PythonClient/racetrack)! -> jego sieć prognozuje trasę, to nie jest reinforcement, 
     dowiedz się jak przetworzyć ciągłe wartości na wartości akcji w dqn. -> papiery które Jacek przeczytał. 
     - Trenujemy na 4 torach i testujemy na 2
     - Okręślamy hiperparametry
