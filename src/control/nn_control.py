@@ -2,7 +2,7 @@
 # https://arxiv.org/pdf/1903.10605.pdf
 
 # A2C
-# https://arxiv.org/pdf/1205.4839.pdf <- old
+# https://arxiv.org/abs/1903.11329 <- old
 # https://arxiv.org/abs/1903.11329 <- nówerka
 
 # A3C
