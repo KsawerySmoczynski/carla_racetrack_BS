@@ -45,20 +45,21 @@ def calc_distance(actor_location:np.array, points_3D:np.array, cut:float=0.02) -
 
     return distance
 
-def visdom_initialize_windows(viz:visdom.Visdom, sensors:dict, location):
+def visdom_initialize_windows(viz:visdom.Visdom, title:str, sensors:dict, location):
 
     windows = {}
     if sensors['depth']:
-        windows['depth'] = viz.image(np.zeros((3, 75, 100)), opts=dict(caption='Depth', title='Depth sensor'))
+        windows['depth'] = viz.image(np.zeros((3, 75, 100)), opts=dict(title=f'{title} Depth sensor', width=800, height=600))
 
     if sensors['rgb']:
-        windows['rgb'] = viz.image(np.zeros((3, 75, 100)), opts=dict(caption='RGB', title='RGB camera'))
+        windows['rgb'] = viz.image(np.zeros((3, 75, 100)), opts=dict(title=f'{title} RGB camera', width=800, height=600))
 
-    windows['trace'] = viz.line(X=[location[0]], Y=[location[1]], opts=dict(caption='Trace', title='Actor trace'))
-    windows['reward'] = viz.line(X=[0], Y=[0], opts=dict(caption='Rewards', title='Rewards received'))
-    windows['velocity'] = viz.line(X=[0], Y=[0], opts=dict(caption='Velocity', title='Velocity in kmh'))
-    windows['gas_brake'] = viz.line(X=[0], Y=[0], opts=dict(caption='Gas and brake', title='Gas and brake'))
-    windows['steer'] = viz.line(X=[0], Y=[0], opts=dict(caption='Steer', title='Steer angle'))
+    windows['trace'] = viz.line(X=[location[0]], Y=[location[1]], opts=dict(title=f'{title} Actor trace'))
+    windows['reward'] = viz.line(X=[0], Y=[0], opts=dict(title=f'{title} Rewards received'))
+    windows['velocity'] = viz.line(X=[0], Y=[0], opts=dict(title=f'{title} Velocity in kmh'))
+    windows['gas_brake'] = viz.line(X=[0], Y=[0], opts=dict(title=f'{title} Gas and brake'))
+    windows['steer'] = viz.line(X=[0], Y=[0], opts=dict(title=f'{title} Steer angle'))
+    windows['distance_2finish'] = viz.line(X=[0], Y=[0], opts=dict(title=f'{title} Steer angle'))
 
     return windows
 
@@ -79,16 +80,17 @@ def visdom_log(viz:visdom.Visdom, windows:dict, sensors:dict, state:dict, action
     viz.line(X=[step], Y=[action['gas_brake']], win=windows['gas_brake'], update='append')
     viz.line(X=[step], Y=[action['steer']], win=windows['steer'], update='append')
     viz.line(X=[step], Y=[state['velocity']], win=windows['velocity'], update='append')
+    viz.line(X=[step], Y=[state['distance_2finish']], win=windows['distance_2finish'], update='append')
 
     if 'depth' in sensors.keys():
         img = sensors['depth'][-1]
         img = np.moveaxis(img, 2, 0).copy().astype(np.uint8)
-        viz.image(img=img, win=windows['depth'])
+        viz.image(img=img, win=windows['depth'], opts=dict(width=800, height=600))
 
     if 'rgb' in sensors.keys():
         img = sensors['rgb'][-1]
         img = np.moveaxis(img, 2, 0).copy().astype(np.uint8)
-        viz.image(img=img, win=windows['rgb'])
+        viz.image(img=img, win=windows['rgb'], opts=dict(width=800, height=600))
 
 
 def tensorboard_log(title:str, writer:SummaryWriter, state:dict, action:dict, reward:float, step:int) -> None:

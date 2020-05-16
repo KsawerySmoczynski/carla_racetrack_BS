@@ -51,12 +51,12 @@ class Agent:
     def velocity_vec(self):
         return self.actor.get_velocity()
 
-    def play_step(self, state:dict, batch:bool=False) -> dict:
+    def play_step(self, state:dict, sensors_data:dict, batch:bool=False) -> dict:
         #Sensors data has to be added
         action = self.controller.control(
             state=state,
             pts_3D=self.waypoints,
-            sensors=self.get_sensors_data(state=state)
+            sensors=sensors_data
         )
 
         if not batch:
@@ -79,7 +79,8 @@ class Agent:
                     data = [0 for i in range(4-step)] \
                              + [idx+1 for idx in range(step)]
                 else:
-                    data = [idx for idx in range((step-3), step+1)]
+                    data = [idx for idx in range(step)]
+                    # data = [idx for idx in range((step-3), step+1)]
                 state[sensor] = data
 
         else:

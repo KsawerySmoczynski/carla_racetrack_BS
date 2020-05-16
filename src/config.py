@@ -24,7 +24,7 @@ THROTTLE_BOUNDS = (-1,1)
 SENSORS = {
     'depth': True,
     'collisions': True,
-    'rgb': False
+    'rgb': True
 }
 
 # RL config

@@ -105,6 +105,8 @@ def main():
 
 def run_client(args):
     args = main()
+    args.host = 'localhost'
+    args.port = 2000
     # Initialize tensorboard -> initialize writer inside run episode so that every
     if args.controller == 'MPC':
         TARGET_SPEED = 90
@@ -117,7 +119,7 @@ def run_client(args):
     else:
         writer = None
 
-    viz = vis.Visdom() if args.visdom else None
+    viz = vis.Visdom(port=6006) if args.visdom else None
 
     # Connecting to client -> later package it in function which checks if the world is already loaded and if the settings are the same.
     # In order to host more scripts concurrently
@@ -194,11 +196,13 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
     world.tick()
     time.sleep(1)# x4? allow controll each 4 frames
 
-    windows = visdom_initialize_windows(viz=viz, sensors=SENSORS, location=agent.location) if args.visdom else None
+    windows = visdom_initialize_windows(viz=viz, title=DATE_TIME, sensors=SENSORS, location=agent.location) if args.visdom else None
 
     for step in range(NUM_STEPS):  #TODO change to while with conditions
         #Retrieve state and actions
-        state = agent.get_state(step) #return here sensors data depending on the flag
+
+        state = agent.get_state(step)
+        sensors_data = agent.get_sensors_data(state=state)
         # states.append(state)
 
         #Check if state is terminal
@@ -208,7 +212,7 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
             break
 
         #Apply action
-        action = agent.play_step(state) #TODO split to two functions
+        action = agent.play_step(state, sensors_data) #TODO split to two functions
         # actions.append(action)
 
         #Transit to next state
@@ -222,17 +226,17 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
         reward = environment.calc_reward(points_3D=agent.waypoints, state=state, next_state=next_state,
                                          alpha=ALPHA, step=step)
         # rewards.append(rewards)
-        print(f'step:{step} data:{len(agent.sensors["depth"]["data"])}')
+        # print(f'step:{step} data:{len(agent.sensors["depth"]["data"])}')
         #Log
         if args.tensorboard:
             tensorboard_log(title=DATE_TIME, writer=writer, state=state,
                             action=action, reward=reward, step=step)
         if args.visdom:
-            sensors_data = agent.get_sensors_data(state=state)
             visdom_log(viz=viz, windows=windows, sensors=sensors_data, state=state, action=action, reward=reward, step=step)
 
         if ((agent.velocity < 20) & (step % 10 == 0)) or (step % 50 == 0):
             set_spectator_above_actor(spectator, agent.transform)
+        # time.sleep(0.1)
 
     agent.destroy(data=True)
     del environment
