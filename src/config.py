@@ -15,6 +15,7 @@ TENSORBOARD_DATA = '../data/tensorboard'
 #World and simulator config
 CARLA_IP = config_dict['carla_ip']
 FRAMERATE = 30
+MAP = 'circut_spa'
 VEHICLE = 'vehicle.audi.tt'
 
 #Controller config
@@ -29,6 +30,7 @@ SENSORS = {
 
 # RL config
 ALPHA = .9975
+
 
 def configure_simulation(args):
     client = carla.Client(args.host, args.port)

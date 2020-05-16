@@ -1,9 +1,5 @@
-import datetime
-import sys
 import time
 import argparse
-from datetime import date
-
 import numpy as np
 import pandas as pd
 import carla
@@ -12,8 +8,7 @@ import carla
 import visdom as vis
 
 from environment import Agent, Environment
-from spawn import df_to_spawn_points, numpy_to_transform, to_vehicle_control, set_spectator_above_actor, \
-    velocity_to_kmh, location_to_numpy, sensors_config
+from spawn import df_to_spawn_points, numpy_to_transform, set_spectator_above_actor
 from control.mpc_control import MPCController
 from control.abstract_control import Controller
 from tensorboardX import SummaryWriter
@@ -23,7 +18,7 @@ from tensorboardX import SummaryWriter
 from config import DATA_PATH, STORE_DATA, FRAMERATE, TENSORBOARD_DATA, ALPHA, \
     DATE_TIME, configure_simulation, SENSORS, VEHICLE, CARLA_IP
 
-from utils import save_episode_info, calc_distance, tensorboard_log, visdom_log, visdom_initialize_windows
+from utils import save_episode_info, tensorboard_log, visdom_log, visdom_initialize_windows
 
 
 def main():
@@ -119,6 +114,7 @@ def run_client(args):
     else:
         writer = None
 
+    # args.visdom = False
     viz = vis.Visdom(port=6006) if args.visdom else None
 
     # Connecting to client -> later package it in function which checks if the world is already loaded and if the settings are the same.
@@ -201,8 +197,7 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
     for step in range(NUM_STEPS):  #TODO change to while with conditions
         #Retrieve state and actions
 
-        state = agent.get_state(step)
-        sensors_data = agent.get_sensors_data(state=state)
+        state = agent.get_state(step, retrieve_data=True)
         # states.append(state)
 
         #Check if state is terminal
@@ -212,7 +207,7 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
             break
 
         #Apply action
-        action = agent.play_step(state, sensors_data) #TODO split to two functions
+        action = agent.play_step(state) #TODO split to two functions
         # actions.append(action)
 
         #Transit to next state
@@ -232,7 +227,7 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
             tensorboard_log(title=DATE_TIME, writer=writer, state=state,
                             action=action, reward=reward, step=step)
         if args.visdom:
-            visdom_log(viz=viz, windows=windows, sensors=sensors_data, state=state, action=action, reward=reward, step=step)
+            visdom_log(viz=viz, windows=windows, state=state, action=action, reward=reward, step=step)
 
         if ((agent.velocity < 20) & (step % 10 == 0)) or (step % 50 == 0):
             set_spectator_above_actor(spectator, agent.transform)

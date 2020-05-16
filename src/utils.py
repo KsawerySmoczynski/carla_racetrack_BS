@@ -1,3 +1,6 @@
+import os
+
+from PIL import Image
 import json
 import numpy as np
 import carla
@@ -7,7 +10,7 @@ from tensorboardX import SummaryWriter
 from config import IMAGE_DOWNSIZE_FACTOR, DATE_TIME
 from spawn import location_to_numpy, calc_azimuth, velocity_to_kmh
 
-to_array = lambda img: np.asarray(img.raw_data, dtype=np.int16).reshape(img.height, img.width, 4)  # 4 because image is in BRGB format
+to_array = lambda img: np.asarray(img.raw_data, dtype=np.int8).reshape(img.height, img.width, 4)  # 4 because image is in BRGB format
 to_rgb_resized = lambda img: img[..., :3][::IMAGE_DOWNSIZE_FACTOR, ::IMAGE_DOWNSIZE_FACTOR, ::-1]  # making it RGB from BRGB with [...,:3][...,::-1]
 
 
@@ -59,11 +62,11 @@ def visdom_initialize_windows(viz:visdom.Visdom, title:str, sensors:dict, locati
     windows['velocity'] = viz.line(X=[0], Y=[0], opts=dict(title=f'{title} Velocity in kmh'))
     windows['gas_brake'] = viz.line(X=[0], Y=[0], opts=dict(title=f'{title} Gas and brake'))
     windows['steer'] = viz.line(X=[0], Y=[0], opts=dict(title=f'{title} Steer angle'))
-    windows['distance_2finish'] = viz.line(X=[0], Y=[0], opts=dict(title=f'{title} Steer angle'))
+    windows['distance_2finish'] = viz.line(X=[0], Y=[0], opts=dict(title=f'{title} Distance 2finish'))
 
     return windows
 
-def visdom_log(viz:visdom.Visdom, windows:dict, sensors:dict, state:dict, action:dict, reward:float, step:int) -> None:
+def visdom_log(viz:visdom.Visdom, windows:dict, state:dict, action:dict, reward:float, step:int) -> None:
     '''
 
     :param viz:
@@ -82,13 +85,13 @@ def visdom_log(viz:visdom.Visdom, windows:dict, sensors:dict, state:dict, action
     viz.line(X=[step], Y=[state['velocity']], win=windows['velocity'], update='append')
     viz.line(X=[step], Y=[state['distance_2finish']], win=windows['distance_2finish'], update='append')
 
-    if 'depth' in sensors.keys():
-        img = sensors['depth'][-1]
+    if 'depth' in state.keys():
+        img = state['depth'][-1]
         img = np.moveaxis(img, 2, 0).copy().astype(np.uint8)
         viz.image(img=img, win=windows['depth'], opts=dict(width=800, height=600))
 
-    if 'rgb' in sensors.keys():
-        img = sensors['rgb'][-1]
+    if 'rgb' in state.keys():
+        img = state['rgb'][-1]
         img = np.moveaxis(img, 2, 0).copy().astype(np.uint8)
         viz.image(img=img, win=windows['rgb'], opts=dict(width=800, height=600))
 
@@ -110,6 +113,20 @@ def tensorboard_log(title:str, writer:SummaryWriter, state:dict, action:dict, re
     writer.add_scalar(tag=f'{title}/velocity', scalar_value=state['velocity'],
                       global_step=step)
     writer.add_scalar(tag=f'{DATE_TIME}/reward', scalar_value=reward, global_step=step)
+
+
+def save_img(img:np.array, path:str, mode:str='RGB') -> None:
+    '''
+    Simple function for saving pictures in np.array format (HEIGHT, WIDTH, CHANNELS)
+
+    :param img: np.array, (H, W, C) format
+    :param path: path to saved file
+    :param mode: 'L' for one channel grayscale, 'LA' for 2 channel grayscale, default: 'RGB'
+    :return:
+    '''
+    if len(path.split('/')) > 1:
+        os.makedirs(name='/'.join(path.split('/')[:-1]), exist_ok=True)
+    Image.fromarray(obj=img, mode=mode).save(fp=path)
 
 def save_episode_info(status:str, actor_dict:dict, env_dict:dict, sensor_data:dict):
     pass

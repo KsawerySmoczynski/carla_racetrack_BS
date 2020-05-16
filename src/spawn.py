@@ -79,7 +79,7 @@ def sensors_config(blueprint_library:carla.BlueprintLibrary,
     sensors = {}
     if depth:
         depth_bp = blueprint_library.find('sensor.camera.depth')
-        depth_relative_transform = carla.Transform(carla.Location(1.0, 0, 1.4), carla.Rotation(-5., 0, 0))
+        depth_relative_transform = carla.Transform(carla.Location(1.4, 0, 1.4), carla.Rotation(-5., 0, 0))
         cc = carla.ColorConverter.LogarithmicDepth
         sensors['depth'] = {'blueprint': depth_bp,
                             'transform': depth_relative_transform,
@@ -94,7 +94,7 @@ def sensors_config(blueprint_library:carla.BlueprintLibrary,
                                 }
     if rgb:
         rgb_bp = blueprint_library.find('sensor.camera.rgb')
-        rgb_relative_transform = carla.Transform(carla.Location(1.0, 0, 1.4), carla.Rotation(-5., 0, 0))
+        rgb_relative_transform = carla.Transform(carla.Location(1.4, 0, 1.4), carla.Rotation(-5., 0, 0))
         sensors['rgb'] = {
             'blueprint': rgb_bp,
             'transform': rgb_relative_transform,
