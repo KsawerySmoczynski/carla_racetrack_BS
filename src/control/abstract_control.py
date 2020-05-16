@@ -3,7 +3,7 @@ import numpy as np
 
 class Controller(metaclass=ABCMeta):
     @abstractmethod
-    def control(self, state):
+    def control(self, state, pts_3D):
         pass
 
     @staticmethod

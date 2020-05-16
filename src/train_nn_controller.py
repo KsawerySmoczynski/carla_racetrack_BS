@@ -9,14 +9,16 @@ import visdom as vis
 
 from environment import Agent, Environment
 from spawn import df_to_spawn_points, numpy_to_transform, set_spectator_above_actor
-from control.mpc_control import MPCController
+from control.nn_control import NnA2CController
 from control.abstract_control import Controller
 from tensorboardX import SummaryWriter
+
+import torch
 
 #Configs
 #TODO Add dynamically generated foldername based on config settings and date.
 from config import DATA_PATH, STORE_DATA, FRAMERATE, TENSORBOARD_DATA, ALPHA, \
-    DATE_TIME, configure_simulation, SENSORS, VEHICLE, CARLA_IP
+    DATE_TIME, configure_simulation, SENSORS, VEHICLE, CARLA_IP, LEARNING_RATE, BATCH_SIZE, EXP_BUFFER
 
 from utils import save_episode_info, tensorboard_log, visdom_log, visdom_initialize_windows
 
@@ -76,7 +78,7 @@ def main():
         '--controller',
         metavar='C',
         default='MPC',
-        help='Avialable controllers: "MPC", "NN", Default: "MPC"')
+        help='Avialable controllers: "MPC", "NN", Default: "NN"')
 
     # Logging configs
     argparser.add_argument(
@@ -94,8 +96,8 @@ def main():
     args = argparser.parse_known_args()
     if len(args) > 1:
         args = args[0]
-    return args
-    # run_client(args)
+#     return args
+    run_client(args)
 
 
 def run_client(args):
@@ -103,12 +105,9 @@ def run_client(args):
     args.host = 'localhost'
     args.port = 2000
     # Initialize tensorboard -> initialize writer inside run episode so that every
-    if args.controller == 'MPC':
-        TARGET_SPEED = 90
-        STEPS_AHEAD = 10
-        if args.tensorboard:
-            writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_TS{TARGET_SPEED}_H{STEPS_AHEAD}_FRAMES{args.frames}_{DATE_TIME}',
-                                   flush_secs=5, max_queue=5)
+    if args.tensorboard:
+        writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_TS{TARGET_SPEED}_H{STEPS_AHEAD}_FRAMES{args.frames}_{DATE_TIME}',
+                               flush_secs=5, max_queue=5)
     elif args.tensorboard:
         writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_FRAMES{args.frames}', flush_secs=5)
     else:
@@ -131,9 +130,32 @@ def run_client(args):
     spawn_points = df_to_spawn_points(spawn_points_df, n=10000, inverse=False) #We keep it here in order to have one way simulation within one script
 
     # Controller initialization
-    if args.controller is 'MPC':
-        controller = MPCController(target_speed=TARGET_SPEED, steps_ahead=STEPS_AHEAD, dt=0.05)
+    if args.controller is 'NN':
+        controller = NnA2CController([8,75,100])
+        optimizer = torch.optim.Adam(controller.parameters(), lr=LEARNING_RATE, eps=1e-3)
 
+    """
+    TODO
+    
+    for epoch in epochs:
+        for batch in batches:
+            zbieramy sobie dane z batchu
+            puszczamy dane z batchu przez sieć (potrzebujemy dodać zwracanie rewardu, można zacząc od prędkości + czasu od rozpoczęcia epizodu?)
+            uzyskujemy sterowańsko i krytykowańsko
+            
+            i tutaj jest tricky bo trzeba jakoś advantage zrobić i niby to rozumiałem a teraz niebardzo wiem jak się zabrać
+            w wielu rozwiązaniach liczy się entropy z jakiegoś powodu? nwm po co, ale pewnie trzeba tylko nwm dlaczego XD
+            
+            jak już mamy loss całościowy zebrany to robimy cyk .backward() i optimizer.step() czy coś podobnego
+            
+            no i lecimy następny batch
+            
+            i co jakiś czas sobie możemy zapisywać aktualny model i wszystko bangla
+            
+            
+            
+    
+    """
     status, actor_dict, env_dict, sensor_data = run_episode(client=client,
                                                             controller=controller,
                                                             spawn_points=spawn_points,
@@ -141,7 +163,6 @@ def run_client(args):
                                                             viz=viz,
                                                             args=args)
 
-    save_episode_info(status, actor_dict, env_dict, sensor_data)
 
 
 def run_episode(client:carla.Client, controller:Controller, spawn_points:np.array,

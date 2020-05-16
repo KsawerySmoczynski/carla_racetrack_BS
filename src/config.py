@@ -30,7 +30,9 @@ SENSORS = {
 
 # RL config
 ALPHA = .9975
-
+LEARNING_RATE = 0.001
+BATCH_SIZE = 20
+EXP_BUFFER = 4
 
 def configure_simulation(args):
     client = carla.Client(args.host, args.port)
