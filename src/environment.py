@@ -2,14 +2,18 @@ import argparse
 import numpy as np
 import carla
 
-from config import IMAGE_DOWNSIZE_FACTOR, FRAMERATE
+
+from config import IMAGE_DOWNSIZE_FACTOR, FRAMERATE, DATA_PATH, DATE_TIME
 from control.abstract_control import Controller
 
 #NAGRODA (Dystans do - Dystans przejechany)
 from spawn import sensors_config, numpy_to_transform, velocity_to_kmh, transform_to_numpy, location_to_numpy, \
     to_vehicle_control
-from utils import to_rgb_resized, to_array, calc_distance
+from utils import to_rgb_resized, to_array, calc_distance, save_img
 
+
+# For saving imgs
+# https://github.com/drj11/pypng/
 
 class Agent:
     '''
@@ -25,6 +29,7 @@ class Agent:
         :param sensors:
         '''
         self.world = world
+        self.map = world.get_map().name
         self.actor:carla.Vehicle = self.world.get_blueprint_library().find(vehicle)
         self.controller = controller
         self.sensors = sensors_config(self.world.get_blueprint_library(), depth=sensors['depth'],
@@ -34,6 +39,7 @@ class Agent:
         self.waypoints = np.concatenate([spawn_points[self.spawn_point_idx:, :], spawn_points[:self.spawn_point_idx, :]])[:, :3]  # delete yaw column
         self.initialized = False
         self.sensors_initialized = False
+        self.no_data_points = 4 #make setter for it, or parameter
 
     @property
     def transform(self):
@@ -51,12 +57,12 @@ class Agent:
     def velocity_vec(self):
         return self.actor.get_velocity()
 
-    def play_step(self, state:dict, sensors_data:dict, batch:bool=False) -> dict:
+
+    def play_step(self, state:dict, batch:bool=False) -> dict:
         #Sensors data has to be added
         action = self.controller.control(
             state=state,
-            pts_3D=self.waypoints,
-            sensors=sensors_data
+            pts_3D=self.waypoints
         )
 
         if not batch:
@@ -68,50 +74,48 @@ class Agent:
 
         return action
 
-    def get_state(self, step, data_index:bool=True):
+    def get_state(self, step, retrieve_data:bool=False):
         state = dict({})
         state['step'] = step
 
-        # Indexes instead of data
-        if data_index: # TODO Make one indexing field
-            for sensor in self.sensors.keys():
-                if len(self.sensors[sensor]['data']) < 4:
-                    data = [0 for i in range(4-step)] \
-                             + [idx+1 for idx in range(step)]
-                else:
-                    data = [idx for idx in range(step)]
-                    # data = [idx for idx in range((step-3), step+1)]
+        sensors = list(self.sensors.keys())
+        sensors.remove('collisions')
+
+        for sensor in sensors:
+            indexes = self.get_sensor_data_indexes(step)
+            state[f'{sensor}_indexes'] = indexes
+            if retrieve_data:
+                data = self.get_sensor_data(sensor, step)
                 state[sensor] = data
 
-        else:
-            # With data
-            for sensor in self.sensors.keys():
-                if len(self.sensors[sensor]['data']) < 4:
-                    data = [self.sensors[sensor]['data'][0] for i in range(4-len(self.sensors[sensor]['data']))] \
-                             + [frame for frame in self.sensors[sensor]['data']]
-                else:
-                    data = self.sensors[sensor]['data'][step-4:step]
-                state[sensor] = data
-
-
+        state['collisions'] = sum(self.sensors['collisions']['data'])
         state['velocity'] = self.velocity
         state['velocity_vec'] = self.velocity_vec
         state['yaw'] = self.transform[3] #hardcoded thats bad
         state['location'] = self.location
         state['distance_2finish'] = calc_distance(actor_location=state['location'],
                                                   points_3D=self.waypoints)
+        self._release_data(state['step'])
 
         return state
 
-    def get_sensors_data(self, state) -> dict:
-        '''
-        Retrieve sensors data
-        :param state:dict - current state of the agent with indeces of data
-        :return: data:dict - dict containing sensor_name: data associated with state pairs
-        '''
-        data = {sensor: [self.sensors[sensor]['data'][idx] for idx in state[sensor]] for sensor in self.sensors.keys() if sensor is not 'collisions'}
-        data['collisions'] = len(self.sensors['collisions']['data'])
+    def get_sensor_data(self, sensor, step):
+        if len(self.sensors[sensor]['data']) < self.no_data_points:
+            data = [self.sensors[sensor]['data'][0] for i in
+                    range(self.no_data_points - len(self.sensors[sensor]['data']))] \
+                   + [frame for frame in self.sensors[sensor]['data']]
+        else:
+            data = self.sensors[sensor]['data'][-self.no_data_points:]
         return data
+
+    def get_sensor_data_indexes(self, step):
+        if step < self.no_data_points:
+            indexes = [0 for i in range(self.no_data_points - step)] \
+                   + [idx + 1 for idx in range(step)]
+        else:
+            indexes = [idx for idx in range(step-self.no_data_points, step)]
+        return indexes
+
 
     def initialize_vehicle(self):
         if not self.initialized:
@@ -160,6 +164,20 @@ class Agent:
     def _release_control(self):
         self.actor.apply_control(carla.VehicleControl(throttle=0., brake=0., gear=1))
 
+    def _release_data(self, step: int) -> None:
+        '''
+        Function which saves sensor data to the disk and releases memory.
+
+        :param step:
+        :return: None
+        '''
+        for sensor in self.sensors.keys():
+            if (sensor is not 'collisions'):
+                save_path = f'{DATA_PATH}/experiments/{self.map}/{DATE_TIME}_{self.controller.__class__.__name__}/{sensor}_{step}.png'
+                save_img(img=self.sensors[sensor]['data'][-1], path=save_path)
+                if step > 4:
+                    self.sensors[sensor]['data'].pop(0)
+
     def destroy(self, data:bool=False):
         '''
         Destroying agent entities while preserving sensors data.
@@ -175,6 +193,7 @@ class Agent:
             self.sensors = None
 
         return True
+
 
 class Environment:
     '''
