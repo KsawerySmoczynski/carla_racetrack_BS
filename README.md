@@ -10,10 +10,8 @@
 
 **Demo**
 
-***Simulator***
 ![Carla simulator](https://s6.gifyu.com/images/carla_gif_down2.gif)
 
-***Client***
 ![Carla client](https://s6.gifyu.com/images/carla_gif_up.gif)
 
 - Most people will glance at your `README`, *maybe* star it, and leave
