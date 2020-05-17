@@ -10,7 +10,9 @@
 
 **Demo**
 
-![Carla demo](https://s6.gifyu.com/images/carla_gif97dc0b4e7f5f1710.gif)
+![Carla simulator](https://s6.gifyu.com/images/carla_gif_down2.gif)
+
+![Carla client](https://s6.gifyu.com/images/carla_gif_up.gif)
 
 - Most people will glance at your `README`, *maybe* star it, and leave
 - Ergo, people should understand instantly what your project is about based on your repo
