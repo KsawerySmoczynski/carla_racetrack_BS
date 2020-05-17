@@ -31,7 +31,9 @@ SENSORS = {
 # RL config
 ALPHA = .9975
 LEARNING_RATE = 0.001
+NUMBER_OF_EPOCHS = 100
 BATCH_SIZE = 20
+RANDOM_SEED = 42
 EXP_BUFFER = 4
 
 def configure_simulation(args):

@@ -3,6 +3,7 @@ import argparse
 import numpy as np
 import pandas as pd
 import carla
+import random
 
 #Local imports
 import visdom as vis
@@ -18,7 +19,7 @@ import torch
 #Configs
 #TODO Add dynamically generated foldername based on config settings and date.
 from config import DATA_PATH, STORE_DATA, FRAMERATE, TENSORBOARD_DATA, ALPHA, \
-    DATE_TIME, configure_simulation, SENSORS, VEHICLE, CARLA_IP, LEARNING_RATE, BATCH_SIZE, EXP_BUFFER
+    DATE_TIME, configure_simulation, SENSORS, VEHICLE, CARLA_IP, LEARNING_RATE, NUMBER_OF_EPOCHS, BATCH_SIZE, RANDOM_SEED, EXP_BUFFER
 
 from utils import save_episode_info, tensorboard_log, visdom_log, visdom_initialize_windows
 
@@ -97,10 +98,10 @@ def main():
     if len(args) > 1:
         args = args[0]
 #     return args
-    run_client(args)
+    run_learning_session(args)
 
 
-def run_client(args):
+def run_learning_session(args):
     args = main()
     args.host = 'localhost'
     args.port = 2000
@@ -134,6 +135,11 @@ def run_client(args):
         controller = NnA2CController([8,75,100])
         optimizer = torch.optim.Adam(controller.parameters(), lr=LEARNING_RATE, eps=1e-3)
 
+    for epoch_idx in range(NUMBER_OF_EPOCHS):
+        print("starting epoch number "+epoch_idx)
+        
+        
+    
     """
     TODO
     
@@ -163,7 +169,21 @@ def run_client(args):
                                                             viz=viz,
                                                             args=args)
 
-
+def split_data_into_batches(mpc_buffer_data):
+    #add mpc_buffer_data shuffling random.shuffle() should do the job
+    #open mpc_buffer_data folder and handle it so that it's a list of data points
+    batched_data = []
+    for data_iterator in range(len(mpc_buffer_data)):
+        batch = []
+        batch_size_controller = 0
+        while batch_size_controller < BATCH_SIZE:
+            batch.append(mpc_buffer_data[data_iterator])
+            batch_size_controller+=1
+        batched_data.append(batch)
+    if len(batched_data[-1])<BATCH_SIZE:
+        batched_data = batched_data[:-1] #removing the last batch if the number of datapoints isn't divisible by BATCH_SIZE
+        
+    return batched_data
 
 def run_episode(client:carla.Client, controller:Controller, spawn_points:np.array,
                 writer:SummaryWriter, viz:vis.Visdom, args) -> (str, dict, dict, list):
