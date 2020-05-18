@@ -93,7 +93,7 @@ class NnA2CController(nn.Module, Controller):
         conv_output = self.conv_net(sensor_data).view(sensor_data.size()[0], -1)
         return self.actor_net(conv_output), self.critic_net(conv_output)
     
-    def control(self, state):
+    def control(self, state, pts_3D):
 
         #leaving the following state elements here, but intend to use just camera data for starters
         location = state['location']
@@ -104,10 +104,9 @@ class NnA2CController(nn.Module, Controller):
         actor_out, critic_out = self.forward(torch.cat((state['depth'], state['rgb']), 1))
         
         actions = {
-            'steer': actor_out[0][0],
-            'gas_brake':  actor_out[0][1],
+            'steer': int(actor_out[0][0]),
+            'gas_brake':  int(actor_out[0][1]),
+            'state_value': int(critic_out[0][0])
         }
-        
-        advantage = critic_out[0][0]
 
-        return actions, advantage
+        return actions
