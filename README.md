@@ -8,6 +8,11 @@
 
 > Contenerized developement enviroment created for purpose of BS Thesis.
 
+**Architecture**
+
+![Architecture](https://s7.gifyu.com/images/architecture.png)
+
+
 **Demo**
 
 ![Carla simulator](https://s6.gifyu.com/images/carla_gif_down2.gif)
