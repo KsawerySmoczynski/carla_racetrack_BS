@@ -181,8 +181,9 @@ class MPCController(Controller):
 
         return cost_func, cost_grad_func, constr_funcs
 
-    def control(self, state, pts_3D):
+    def control(self, state, **kwargs):
 
+        pts_3D = kwargs['pts_3D']
         which_closest, _, location = self._calc_closest_dists_and_location(
         # which_closest, _, location = _calc_closest_dists_and_location(
             state['location'], #without yaws

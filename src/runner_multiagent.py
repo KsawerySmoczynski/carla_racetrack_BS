@@ -165,8 +165,11 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
     world = environment.reset_env(args)
     agent = Agent(world=world, controller=controller, vehicle=args.vehicle,
                   sensors=SENSORS, spawn_points=spawn_points)
+    agent2 = Agent(world=world, controller=controller, vehicle=args.vehicle,
+                  sensors=SENSORS, spawn_points=spawn_points)
 
     agent.initialize_vehicle()
+    agent2.initialize_vehicle()
     spectator = world.get_spectator()
     spectator.set_transform(numpy_to_transform(
         spawn_points[agent.spawn_point_idx-30]))
@@ -175,13 +178,15 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
     world.tick()
     world.tick()
     # Calculate norm of all cordinates
+    spectator.set_transform(numpy_to_transform(
+        spawn_points[agent2.spawn_point_idx-30]))
     while (agent_transform != agent.transform).any():
         agent_transform = agent.transform
         world.tick()
 
     #INITIALIZE SENSORS
     agent.initialize_sensors()
-
+    agent2.initialize_sensors()
     # Initialize visdom windows
 
     # Release handbrake
@@ -194,6 +199,7 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
         #Retrieve state and actions
 
         state = agent.get_state(step, retrieve_data=True)
+        state2 = agent2.get_state(step, retrieve_data=True)
         # states.append(state)
 
         #Check if state is terminal
@@ -204,6 +210,7 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
 
         #Apply action
         action = agent.play_step(state) #TODO split to two functions
+        action2 = agent2.play_step(state2)  # TODO split to two functions
         # actions.append(action)
 
         #Transit to next state
@@ -212,9 +219,15 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
             'velocity': agent.velocity,
             'location': agent.location
         }
+        next_state2 = {
+            'velocity': agent2.velocity,
+            'location': agent2.location
+        }
 
         #Receive reward
         reward = environment.calc_reward(points_3D=agent.waypoints, state=state, next_state=next_state,
+                                         alpha=ALPHA, step=step)
+        reward2 = environment.calc_reward(points_3D=agent2.waypoints, state=state2, next_state=next_state2,
                                          alpha=ALPHA, step=step)
         # rewards.append(rewards)
         # print(f'step:{step} data:{len(agent.sensors["depth"]["data"])}')
@@ -225,7 +238,10 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
         if args.visdom:
             visdom_log(viz=viz, windows=windows, state=state, action=action, reward=reward, step=step)
 
-        if ((agent.velocity < 20) & (step % 10 == 0)) or (step % 50 == 0):
+        if (step % 100 == 0):
+            set_spectator_above_actor(spectator, agent2.transform)
+
+        if ((agent.velocity < 20) & (step % 10 == 0)) or ((step+50) % 100 == 0):
             set_spectator_above_actor(spectator, agent.transform)
         # time.sleep(0.1)
 

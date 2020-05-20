@@ -25,7 +25,7 @@ THROTTLE_BOUNDS = (-1,1)
 SENSORS = {
     'depth': True,
     'collisions': True,
-    'rgb': True
+    'rgb': False
 }
 
 # RL config
@@ -36,7 +36,12 @@ BATCH_SIZE = 20
 RANDOM_SEED = 42
 EXP_BUFFER = 4
 
-def configure_simulation(args):
+def configure_simulation(args) -> carla.Client:
+    '''
+    Function for client and connection creation.
+    :param args:
+    :return: carla.Client, client object connected to the carla Simulator
+    '''
     client = carla.Client(args.host, args.port)
     client.set_timeout(5.0)  # seconds
 

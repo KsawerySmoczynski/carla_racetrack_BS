@@ -1,9 +1,7 @@
 # Plan na najbliższy czas
-## Utworzyć system logowania informacji i model danych
-    * Tensorboard na zmienne parametry -> prędkość, wartości kontrolerów ogarnąć jak działa GlobalSummaryWriter
-    * Visdom -> do wizualizacji obrazów i lokalizacji auta na torze. Nie powielać informacji, wysyłać zapisane z dysku na front. Jak się nie uda to przemyśleć jak uprościć model
     * Puścić MPC model w każdej konfiguracji i zapisać wszystkie informacje 
-
+    * Napisać skrypt do visdom który na podstawie danych spływających serwer prowadziłby logowanie. 
+    
 ## Uczymy sieć na mpc
     - Przeczytaj train_on_depth (https://github.com/asap-report/carla/tree/racetrack/PythonClient/racetrack)! -> jego sieć prognozuje trasę, to nie jest reinforcement, 
     dowiedz się jak przetworzyć ciągłe wartości na wartości akcji w dqn. -> papiery które Jacek przeczytał. 
@@ -14,16 +12,17 @@
 
 # Done 
 ## Stworzenie MPC jeżdżącego po torze
-    - [Najlepsze](https://towardsdatascience.com/the-final-step-control-783467095138)
-    - [YT](https://www.youtube.com/watch?v=nqv6jFeVUYA)
-    - [YT cars](https://www.youtube.com/watch?v=Gh8R4PVg1Zc)
-    - [Model Predictive Controller Project](https://medium.com/@NickHortovanyi/carnd-controls-mpc-2f456ce658f)
-    - [Up](https://github.com/hortovanyi/CarND-MPC-Project)
-    - [Model Predictive Control for Autonomous Vehicles](https://medium.com/@shubhra.pandit/model-predictive-control-for-autonomous-vehicles-1dc18348f651)
+- [Najlepsze](https://towardsdatascience.com/the-final-step-control-783467095138)
+- [YT](https://www.youtube.com/watch?v=nqv6jFeVUYA)
+- [YT cars](https://www.youtube.com/watch?v=Gh8R4PVg1Zc)
+- [Model Predictive Controller Project](https://medium.com/@NickHortovanyi/carnd-controls-mpc-2f456ce658f)
+- [Up](https://github.com/hortovanyi/CarND-MPC-Project)
+- [Model Predictive Control for Autonomous Vehicles](https://medium.com/@shubhra.pandit/model-predictive-control-for-autonomous-vehicles-1dc18348f651)
      
-    Dane zapisane przez mpc traktujemy jako buffer. 
-    Puszczamy na wszystkich torach w każdą stronę czyli mamy 6 datasetów.
-    
+* Utworzyć system logowania informacji i model danych
+* Tensorboard na zmienne parametry -> prędkość, wartości kontrolerów ogarnąć jak działa GlobalSummaryWriter
+* Visdom -> do wizualizacji obrazów i lokalizacji auta na torze. Nie powielać informacji, wysyłać zapisane z dysku na front. Jak się nie uda to przemyśleć jak uprościć model
+
 # Inne
 
 - Jak zaprojektować funkcję celu?

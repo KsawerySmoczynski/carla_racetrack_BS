@@ -39,9 +39,13 @@ def calc_distance(actor_location:np.array, points_3D:np.array, cut:float=0.02) -
     :return: float - distance to the last point.
     '''
 
+    #TODO measure distance as a fraction of whole track length -> universal, track independent
     skipped_points = np.argmin(np.linalg.norm(points_3D-actor_location, axis=1))
     cut_idx = int(points_3D.shape[0] * cut)
-    skip = (skipped_points + cut_idx) % points_3D.shape[0]
+    if (skipped_points + cut_idx) < points_3D.shape[0]:
+        skip = (skipped_points + cut_idx) % points_3D.shape[0]
+    else:
+        skip = skipped_points
     actor_to_point = np.linalg.norm(points_3D[skip] - actor_location)
     points_deltas = np.diff(points_3D[skip:], axis=0)
     distance = actor_to_point + np.sqrt((points_deltas**2).sum(axis=1)).sum()

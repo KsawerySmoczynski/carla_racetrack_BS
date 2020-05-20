@@ -1,3 +1,6 @@
+# Torch multiprocessing
+# https://pytorch.org/docs/stable/notes/multiprocessing.html
+
 # Q-learning
 # https://arxiv.org/pdf/1903.10605.pdf
 

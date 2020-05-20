@@ -16,17 +16,14 @@ from utils import to_rgb_resized, to_array, calc_distance, save_img
 # https://github.com/drj11/pypng/
 
 class Agent:
-    '''
-    All of the default data is stored in the form of numpy array,
-    transforms to other formats are performed ad hoc.
-    '''
-    def __init__(self, world:carla.World, controller:Controller, vehicle:str, sensors:dict, spawn_points:np.array):
+    def __init__(self, world:carla.World, controller:Controller, vehicle:str, sensors:dict, spawn_points:np.array, no_data_points:int=4):
         '''
-
-        :param world:
-        :param controller:
-        :param vehicle:
-        :param sensors:
+        All of the default data is stored in the form of numpy array,
+        transforms to other formats are performed ad hoc.
+        :param world:carla.World
+        :param controller:Controller, class inherited from abstract class Controller providing control method
+        :param vehicle:str, exact vehicle blueprint name
+        :param sensors:dictionary imported from config describing which sensors agent should use
         '''
         self.world = world
         self.map = world.get_map().name
@@ -39,27 +36,35 @@ class Agent:
         self.waypoints = np.concatenate([spawn_points[self.spawn_point_idx:, :], spawn_points[:self.spawn_point_idx, :]])[:, :3]  # delete yaw column
         self.initialized = False
         self.sensors_initialized = False
-        self.no_data_points = 4 #make setter for it, or parameter
+        self.no_data_points = no_data_points
+
+    def __str__(self) -> str:
+        return f'{self.controller.__class__.__name__}_{"_".join(self.sensors.keys())}_{self.spawn_point_idx}'
 
     @property
     def transform(self):
         return transform_to_numpy(self.actor.get_transform())
 
     @property
-    def location(self):
+    def location(self) -> np.array:
         return location_to_numpy(self.actor.get_location())
 
     @property
-    def velocity(self):
+    def velocity(self) -> float:
         return velocity_to_kmh(self.actor.get_velocity())
 
     @property
-    def velocity_vec(self):
+    def velocity_vec(self) -> carla.Vector3D:
         return self.actor.get_velocity()
 
 
     def play_step(self, state:dict, batch:bool=False) -> dict:
-        #Sensors data has to be added
+        '''
+        Plays one step of simulation, chooses action to take in a given state
+        :param state:dict, dictionary of all nescessary values observable by actor provided by the state
+        :param batch:bool, apply the action or return it as a value (for asynchronous methods)
+        :return: action:dict, dictionary containing values for actuators
+        '''
         action = self.controller.control(
             state=state,
             pts_3D=self.waypoints
@@ -75,6 +80,12 @@ class Agent:
         return action
 
     def get_state(self, step, retrieve_data:bool=False):
+        '''
+        Retrieves information about the state from agent's sensors
+        :param step:int, step number needed for computation of indexes for logging
+        :param retrieve_data:bool, wether 
+        :return:
+        '''
         state = dict({})
         state['step'] = step
 
@@ -85,7 +96,7 @@ class Agent:
             indexes = self.get_sensor_data_indexes(step)
             state[f'{sensor}_indexes'] = indexes
             if retrieve_data:
-                data = self.get_sensor_data(sensor, step)
+                data = self.get_sensor_data(sensor)
                 state[sensor] = data
 
         state['collisions'] = sum(self.sensors['collisions']['data'])
@@ -99,7 +110,12 @@ class Agent:
 
         return state
 
-    def get_sensor_data(self, sensor, step):
+    def get_sensor_data(self, sensor) -> list:
+        '''
+        Returns particular sensor data from current agent state.
+        :param sensor:
+        :return: list of datapoints
+        '''
         if len(self.sensors[sensor]['data']) < self.no_data_points:
             data = [self.sensors[sensor]['data'][0] for i in
                     range(self.no_data_points - len(self.sensors[sensor]['data']))] \
@@ -108,7 +124,12 @@ class Agent:
             data = self.sensors[sensor]['data'][-self.no_data_points:]
         return data
 
-    def get_sensor_data_indexes(self, step):
+    def get_sensor_data_indexes(self, step) -> list:
+        '''
+        Returns global indexes of data associated with particular step.
+        :param step: int, current step
+        :return: list of integers
+        '''
         if step < self.no_data_points:
             indexes = [0 for i in range(self.no_data_points - step)] \
                    + [idx + 1 for idx in range(step)]
@@ -117,7 +138,11 @@ class Agent:
         return indexes
 
 
-    def initialize_vehicle(self):
+    def initialize_vehicle(self) -> None:
+        '''
+        Spawns vehicle and applies break
+        :return: None
+        '''
         if not self.initialized:
             self.actor:carla.Vehicle = self.world.spawn_actor(self.actor, numpy_to_transform(self.spawn_point))
             self.actor.apply_control(carla.VehicleControl(brake=1., gear=1))
@@ -126,8 +151,11 @@ class Agent:
         else:
             raise Exception('Vehicle already spawned')
 
-    def initialize_sensors(self):
-
+    def initialize_sensors(self) -> None:
+        '''
+        Initializes sensors based on intial sensor dict loaded from config
+        :return: None
+        '''
         if 'depth' in self.sensors.keys():
             self.sensors['depth']['data'] = []
             self.sensors['depth']['actor'] = self.world.spawn_actor(blueprint=self.sensors['depth']['blueprint'],
@@ -161,26 +189,30 @@ class Agent:
         self._release_control()
         print('Control released')
 
-    def _release_control(self):
+    def _release_control(self) -> None:
+        '''
+        Private method releasing control of vahicle before the start of simulation.
+        :return: None
+        '''
         self.actor.apply_control(carla.VehicleControl(throttle=0., brake=0., gear=1))
 
     def _release_data(self, step: int) -> None:
         '''
-        Function which saves sensor data to the disk and releases memory.
-
+        Private method which saves sensor data to the disk and releases memory.
         :param step:
         :return: None
         '''
         for sensor in self.sensors.keys():
-            if (sensor is not 'collisions'):
-                save_path = f'{DATA_PATH}/experiments/{self.map}/{DATE_TIME}_{self.controller.__class__.__name__}/{sensor}_{step}.png'
+            if sensor is not 'collisions':
+                save_path = f'{DATA_PATH}/experiments/{self.map}/{DATE_TIME}_{self.__str__()}/{sensor}_{step}.png'
                 save_img(img=self.sensors[sensor]['data'][-1], path=save_path)
-                if step > 4:
+                if step > self.no_data_points:
                     self.sensors[sensor]['data'].pop(0)
 
-    def destroy(self, data:bool=False):
+    def destroy(self, data:bool=False) -> None:
         '''
         Destroying agent entities while preserving sensors data.
+        :param: data:bool, decides of cleaning data asociated with agent from buffer.
         :return:bool, if Agent destroyed.
         '''
         if self.sensors_initialized:
@@ -196,33 +228,61 @@ class Agent:
 
 
 class Environment:
-    '''
-    To orchestrate asynchronous agents and world ticks in future
-    '''
+    #TODO implement as Singleton
+    #TODO implement multiagent handling methods for multiprocessing:
+    # initialization, state-action method, rewards calculation method, logging (Global Summary Writer).
     def __init__(self, client:carla.Client):
+        '''
+        Orchestrates asynchronous agents and world ticks.
+        Calculates reward and controls the state of the world.
+
+        :param client: carla.Client
+        '''
         self.client = client
-        # self.world = None
+        self.world = None
         # self.agents = []
 
 
-    def reset_env(self, args:argparse.ArgumentParser):
+    def reset_env(self, args:argparse.ArgumentParser) -> carla.World:
+        '''
+        Loads map provided with args
+        #TODO change args to map, synchronous and frame parameters.
+        :param args:
+        :return:
+        '''
         # [agent.actor.destroy() for agent in self.agents]
         # self.agents = []
-        world: carla.World = self.client.load_world(args.map)
+        self.world: carla.World = self.client.load_world(args.map)
         if args.synchronous:
-            settings = world.get_settings()
+            settings = self.world.get_settings()
             settings.synchronous_mode = True  # Enables synchronous mode
             settings.fixed_delta_seconds = 1 / args.frames
-            world.apply_settings(settings)
-        return world
+            self.world.apply_settings(settings)
+        return self.world
 
-    def toggle_world(self, world:carla.World, frames:int=FRAMERATE):
-        settings = world.get_settings()
+    def toggle_world(self, frames:int=FRAMERATE) -> None:
+        '''
+        Toggle world state from synchonous mode to normal mode.
+        For debugging purposes.
+        :param frames: int, number of simulated frames per second
+        :return: None
+        '''
+        settings = self.world.get_settings()
         settings.synchronous_mode = not settings.synchronous_mode
         settings.fixed_delta_seconds = abs(float(settings.fixed_delta_seconds or 0) - 1/frames)
-        world.apply_settings(settings)
+        self.world.apply_settings(settings)
 
-    def calc_reward(self, points_3D:np.array, state:dict, next_state, alpha: float = .99, step: int = 0):
+    def calc_reward(self, points_3D:np.array, state:dict, next_state, alpha: float = .995, step: int = 0) -> float:
+        '''
+        Calculating reward based on location and speed between 2 consecutive states.
+
+        :param points_3D:np.array, points
+        :param state:
+        :param next_state:dict, simple dict containing only velocity and location from resulting state
+        :param alpha:float, discount factor
+        :param step:int
+        :return: reward:float,
+        '''
 
         if calc_distance(actor_location=next_state['location'], points_3D=points_3D) > calc_distance(
                 actor_location=state['location'], points_3D=points_3D):
