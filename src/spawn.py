@@ -11,6 +11,7 @@ transform_to_numpy = lambda transform: np.array([transform.location.x, transform
 numpy_to_location = lambda point: Location(point[0], point[1], point[2])
 location_to_numpy = lambda location: np.array([location.x, location.y, location.z])
 velocity_to_kmh = lambda v: float(3.6 * np.math.sqrt(v.x ** 2 + v.y ** 2 + v.z ** 2))
+numpy_to_velocity_vec = lambda v: carla.Vector3D(x=v[0], y=v[1], z=v[2])
 
 
 def df_to_spawn_points(data: pd.DataFrame, n:int=10000, inverse:bool=False) -> np.array:

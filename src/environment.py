@@ -42,6 +42,10 @@ class Agent:
         return f'{self.controller.__class__.__name__}_{"_".join(self.sensors.keys())}_{self.spawn_point_idx}'
 
     @property
+    def save_path(self) -> str:
+        return f'{DATA_PATH}/experiments/{self.map}/{DATE_TIME}_{self.__str__()}'
+
+    @property
     def transform(self):
         return transform_to_numpy(self.actor.get_transform())
 
@@ -55,7 +59,8 @@ class Agent:
 
     @property
     def velocity_vec(self) -> carla.Vector3D:
-        return self.actor.get_velocity()
+        # velocity has the same vector structure as location
+        return location_to_numpy(self.actor.get_velocity())
 
 
     def play_step(self, state:dict, batch:bool=False) -> dict:
@@ -79,6 +84,8 @@ class Agent:
 
         return action
 
+    #TODO add initial empty state from which keys will be extracted for logging
+
     def get_state(self, step, retrieve_data:bool=False):
         '''
         Retrieves information about the state from agent's sensors
@@ -97,13 +104,13 @@ class Agent:
             state[f'{sensor}_indexes'] = indexes
             if retrieve_data:
                 data = self.get_sensor_data(sensor)
-                state[sensor] = data
+                state[f'{sensor}_data'] = data
 
         state['collisions'] = sum(self.sensors['collisions']['data'])
         state['velocity'] = self.velocity
-        state['velocity_vec'] = self.velocity_vec
+        state['velocity_vec'] = list(self.velocity_vec)
         state['yaw'] = self.transform[3] #hardcoded thats bad
-        state['location'] = self.location
+        state['location'] = list(self.location)
         state['distance_2finish'] = calc_distance(actor_location=state['location'],
                                                   points_3D=self.waypoints)
         self._release_data(state['step'])
@@ -204,8 +211,8 @@ class Agent:
         '''
         for sensor in self.sensors.keys():
             if sensor is not 'collisions':
-                save_path = f'{DATA_PATH}/experiments/{self.map}/{DATE_TIME}_{self.__str__()}/{sensor}_{step}.png'
-                save_img(img=self.sensors[sensor]['data'][-1], path=save_path)
+                file = f'{sensor}_{step}.png'
+                save_img(img=self.sensors[sensor]['data'][-1], path=f'{self.save_path}/sensors/{file}')
                 if step > self.no_data_points:
                     self.sensors[sensor]['data'].pop(0)
 

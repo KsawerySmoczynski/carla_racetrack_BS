@@ -10,22 +10,24 @@ DATE_TIME = datetime.datetime.now().strftime('%Y%m%d_%H%M')
 #Storage config
 STORE_DATA = True
 DATA_PATH = '../data'
-TENSORBOARD_DATA = '../data/tensorboard'
+TENSORBOARD_DATA = f'{DATA_PATH}/tensorboard'
+EXPERIMENTS_PATH = f'{DATA_PATH}/experiments'
 
 #World and simulator config
 CARLA_IP = config_dict['carla_ip']
 FRAMERATE = 30
-MAP = 'circut_spa'
+MAP = 'RaceTrack2'
 VEHICLE = 'vehicle.audi.tt'
 
 #Controller config
 IMAGE_DOWNSIZE_FACTOR = 8
 STEER_BOUNDS = (-1, 1)
 THROTTLE_BOUNDS = (-1,1)
+#Order of sensors in dict is important for the logging purposes
 SENSORS = {
     'depth': True,
+    'rgb': True,
     'collisions': True,
-    'rgb': False
 }
 
 # RL config
