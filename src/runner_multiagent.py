@@ -84,12 +84,12 @@ def main():
     args = argparser.parse_known_args()
     if len(args) > 1:
         args = args[0]
-    return args
-    # run_client(args)
+    # return args
+    run_client(args)
 
 
 def run_client(args):
-    args = main()
+    # args = main()
     args.host = 'localhost'
     args.port = 2000
 
@@ -161,41 +161,30 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
 
     # Release handbrake
     world.tick()
-
+    time.sleep(1)
     environment.initialize_agents_reporting(sensors=SENSORS)
 
 
     for step in range(NUM_STEPS):  #TODO change to while with conditions
         #Retrieve state and actions
 
-        # states = environment.get_agents_states(step, retrieve_data=True)
-        state = agent.get_state(step, retrieve_data=True)
+        states = [agent.get_state(step, retrieve_data=True) for agent in environment.agents]
 
         #Apply action
-        action = agent.play_step(state) #TODO split to two functions
+        actions = [agent.play_step(state) for agent, state in zip(environment.agents, states)]
         # actions.append(action)
 
         #Transit to next state
         world.tick()
-        next_state = {
-            'velocity': agent.velocity,
-            'location': agent.location
-        }
 
-        #Receive reward
-        reward = environment.calc_reward(points_3D=agent.waypoints, state=state, next_state=next_state,
-                                         alpha=ALPHA, step=step)
+        next_states = [{'velocity': agent.velocity,'location': agent.location} for agent in environment.agents]
 
-        save_info(path=agent.save_path, state=state, action=action, reward=reward)
+        rewards = [environment.calc_reward(points_3D=agent.waypoints, state=state, next_state=next_state,
+                                         alpha=ALPHA, step=step) for agent, state, next_state in zip(environment.agents, states, next_states)]
 
-        # print(f'step:{step} data:{len(agent.sensors["depth"]["data"])}')
-        #Log
-        if args.tensorboard:
-            tensorboard_log(title=DATE_TIME, writer=writer, state=state,
-                            action=action, reward=reward, step=step)
-        if ((agent.velocity < 20) & (step % 10 == 0)) or (step % 50 == 0):
-            set_spectator_above_actor(spectator, agent.transform)
-        # time.sleep(0.1)
+        for agent, state, action, reward in zip(environment.agents, states, actions, rewards):
+            save_info(path=agent.save_path, state=state, action=action, reward=reward)
+
 
     status, actor_dict, env_dict, sensor_data = str, dict, dict, list
 

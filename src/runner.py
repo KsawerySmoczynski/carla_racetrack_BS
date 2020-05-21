@@ -83,7 +83,7 @@ def main():
     args = argparser.parse_known_args()
     if len(args) > 1:
         args = args[0]
-    # return args
+
     run_client(args)
 
 

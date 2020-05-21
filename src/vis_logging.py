@@ -97,7 +97,8 @@ def main():
     visdom = vis.Visdom(port=6006)
 
     experiment = sorted(os.listdir(f'{EXPERIMENTS_PATH}/{MAP}'))[-1]
-    vis_run(visdom=visdom, data_path=f'{EXPERIMENTS_PATH}/{MAP}/{experiment}')
+    controller = sorted(os.listdir(f'{EXPERIMENTS_PATH}/{MAP}/{experiment}'))[-1]
+    vis_run(visdom=visdom, data_path=f'{EXPERIMENTS_PATH}/{MAP}/{experiment}/{controller}')
 
 if __name__ == '__main__':
     main()
