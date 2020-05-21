@@ -186,6 +186,16 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
         for agent, state, action, reward in zip(environment.agents, states, actions, rewards):
             save_info(path=agent.save_path, state=state, action=action, reward=reward)
 
+        for idx, (state, agent) in enumerate(zip(states, environment.agents)):
+            if state['distance_2finish'] < 5:
+                agent.destroy(data=True)
+                environment.agents.pop(idx)
+                print(f'agent {idx} finished the race')
+        if len(environment.agents) < 1:
+            print('fini')
+            break
+
+
 
     status, actor_dict, env_dict, sensor_data = str, dict, dict, list
 

@@ -16,7 +16,7 @@ EXPERIMENTS_PATH = f'{DATA_PATH}/experiments'
 CARLA_IP = config_dict['carla_ip']
 FRAMERATE = 30
 MAP = 'circut_spa'
-INVERSE = True
+INVERSE = False
 VEHICLE = 'vehicle.audi.tt'
 
 #Controller config
@@ -38,3 +38,5 @@ NUMBER_OF_EPOCHS = 100
 BATCH_SIZE = 20
 RANDOM_SEED = 42
 EXP_BUFFER = 4
+
+#Odwrócony circut spa nie działa

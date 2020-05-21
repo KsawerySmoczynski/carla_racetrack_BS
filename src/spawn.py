@@ -22,9 +22,10 @@ def df_to_spawn_points(data: pd.DataFrame, n:int=10000, inverse:bool=False) -> n
     :param inverse: if to inverse direction of the racetrack
     :return:np.array
     '''
-    pts_3D = data[['x', 'y', 'z']].values.T
+    pts_3D = data[['x', 'y', 'z']].values
     if inverse:
         pts_3D = np.flipud(pts_3D)
+    pts_3D = pts_3D.T
     tck, u = splprep(pts_3D, u=None, s=1.5, per=1, k=2)
     u_new = np.linspace(u.min(), u.max(), n+1)
     x, y, z = splev(u_new, tck, der=0)

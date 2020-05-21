@@ -417,6 +417,7 @@ class Environment:
                 actor_location=state['location'], points_3D=points_3D):
             return -(next_state['velocity'] / (state['velocity'] + 1)) * (alpha ** step) - punishment
 
+        #TODO punishment = step * punishment -> very small value for punishment grows with time
         # return (next_state['velocity']/(state['velocity'] + 1)) * \
         #        ((tracklen - calc_from_closest_distance) - distance_travelled )  * (alpha**step)
         return (next_state['velocity'] / (state['velocity'] + 1)) * (alpha ** step) - punishment

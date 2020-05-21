@@ -1,6 +1,5 @@
 # Plan na najbliższy czas
-    * Puścić MPC model w każdej konfiguracji i zapisać wszystkie informacje 
-    * Napisać skrypt do visdom który na podstawie danych spływających serwer prowadziłby logowanie. 
+     * skrypt do oceny sumarycznej nagrody z episodu każdego aktora, gdy średnia nagroda jest niższa niż 0.01 to usuwamy pliki takiego episodu, że nie brało ich jako buffer 
     
 ## Uczymy sieć na mpc
     - Przeczytaj train_on_depth (https://github.com/asap-report/carla/tree/racetrack/PythonClient/racetrack)! -> jego sieć prognozuje trasę, to nie jest reinforcement, 
@@ -22,6 +21,8 @@
 * Utworzyć system logowania informacji i model danych
 * Tensorboard na zmienne parametry -> prędkość, wartości kontrolerów ogarnąć jak działa GlobalSummaryWriter
 * Visdom -> do wizualizacji obrazów i lokalizacji auta na torze. Nie powielać informacji, wysyłać zapisane z dysku na front. Jak się nie uda to przemyśleć jak uprościć model
+* Puścić MPC model w każdej konfiguracji i zapisać wszystkie informacje 
+* Napisać skrypt do visdom który na podstawie danych spływających serwer prowadziłby logowanie.
 
 # Inne
 

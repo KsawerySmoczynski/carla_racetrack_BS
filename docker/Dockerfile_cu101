@@ -62,7 +62,8 @@ RUN pip install --user --no-cache jupyter notebook jupyterlab matplotlib ipykern
 	jupyter_http_over_ws  \
 	tensorboardX \ 
 	seaborn \
-        jupyterlab-git \
+	tensorflow \
+	visdom \
 	sympy 
 
 RUN jupyter labextension install --no-build @jupyter-widgets/jupyterlab-manager ipyvolume jupyter-threejs @jupyterlab/toc  && jupyter lab build
