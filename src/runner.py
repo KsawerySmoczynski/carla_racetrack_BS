@@ -1,4 +1,6 @@
 import argparse
+import time
+
 import numpy as np
 import pandas as pd
 import carla
@@ -14,10 +16,11 @@ from tensorboardX import SummaryWriter
 
 #Configs
 #TODO Add dynamically generated foldername based on config settings and date.
-from config import DATA_PATH, STORE_DATA, FRAMERATE, TENSORBOARD_DATA, ALPHA, \
-    DATE_TIME, configure_simulation, SENSORS, VEHICLE, CARLA_IP, MAP
+from config import DATA_PATH, FRAMERATE, TENSORBOARD_DATA, ALPHA, \
+    DATE_TIME, SENSORS, VEHICLE, CARLA_IP, MAP
 
-from utils import tensorboard_log, visdom_log, visdom_initialize_windows, init_reporting, save_info
+from utils import tensorboard_log, visdom_log, init_reporting, save_info, \
+    configure_simulation
 
 
 def main():
@@ -119,13 +122,12 @@ def run_client(args):
                                                             controller=controller,
                                                             spawn_points=spawn_points,
                                                             writer=writer,
-                                                            viz=viz,
                                                             args=args)
 
 
 
 def run_episode(client:carla.Client, controller:Controller, spawn_points:np.array,
-                writer:SummaryWriter, viz:vis.Visdom, args) -> (str, dict, dict, list):
+                writer:SummaryWriter, args) -> (str, dict, dict, list):
     '''
     Runs single episode. Configures world and agent, spawns it on map and controlls it from start point to termination
     state.
@@ -169,7 +171,7 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
 
     # Release handbrake
     world.tick()
-
+    time.sleep(1)
     init_reporting(path=agent.save_path, sensors=SENSORS)
 
     for step in range(NUM_STEPS):  #TODO change to while with conditions
@@ -202,12 +204,6 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
 
         # print(f'step:{step} data:{len(agent.sensors["depth"]["data"])}')
         #Log
-        if args.tensorboard:
-            tensorboard_log(title=DATE_TIME, writer=writer, state=state,
-                            action=action, reward=reward, step=step)
-        if args.visdom:
-            visdom_log(viz=viz, windows=windows, state=state, action=action, reward=reward, step=step)
-
         if ((agent.velocity < 20) & (step % 10 == 0)) or (step % 50 == 0):
             set_spectator_above_actor(spectator, agent.transform)
         # time.sleep(0.1)

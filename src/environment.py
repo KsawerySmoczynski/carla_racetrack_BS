@@ -6,7 +6,7 @@ import carla
 import torch.multiprocessing as mp
 
 #Local imports
-from config import IMAGE_DOWNSIZE_FACTOR, FRAMERATE, DATA_PATH, DATE_TIME, SENSORS
+from config import IMAGE_DOWNSIZE_FACTOR, FRAMERATE, DATA_PATH, DATE_TIME, SENSORS, INVERSE
 from control.abstract_control import Controller
 from spawn import sensors_config, numpy_to_transform, velocity_to_kmh, transform_to_numpy, location_to_numpy, \
     to_vehicle_control
@@ -47,7 +47,7 @@ class Agent:
 
     @property
     def save_path(self) -> str:
-        return f'{DATA_PATH}/experiments/{self.map}/{DATE_TIME}/{self.__str__()}'
+        return f'{DATA_PATH}/experiments/{self.map}{"_inverse"*INVERSE}/{DATE_TIME}/{self.__str__()}'
 
     @property
     def transform(self):
@@ -401,7 +401,7 @@ class Environment:
         settings.fixed_delta_seconds = abs(float(settings.fixed_delta_seconds or 0) - 1/frames)
         self.world.apply_settings(settings)
 
-    def calc_reward(self, points_3D:np.array, state:dict, next_state, alpha: float = .995, punishment:float=0.1, step: int = 0) -> float:
+    def calc_reward(self, points_3D:np.array, state:dict, next_state, alpha: float = .995, punishment:float=0.05, step: int = 0) -> float:
         '''
         Calculating reward based on location and speed between 2 consecutive states.
 
@@ -413,7 +413,7 @@ class Environment:
         :return: reward:float,
         '''
 
-        if calc_distance(actor_location=next_state['location'], points_3D=points_3D) > calc_distance(
+        if calc_distance(actor_location=next_state['location'], points_3D=points_3D) >= calc_distance(
                 actor_location=state['location'], points_3D=points_3D):
             return -(next_state['velocity'] / (state['velocity'] + 1)) * (alpha ** step) - punishment
 

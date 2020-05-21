@@ -16,9 +16,10 @@ from tensorboardX import SummaryWriter
 #Configs
 #TODO Add dynamically generated foldername based on config settings and date.
 from config import DATA_PATH, STORE_DATA, FRAMERATE, TENSORBOARD_DATA, ALPHA, \
-    DATE_TIME, configure_simulation, SENSORS, VEHICLE, CARLA_IP, MAP
+    DATE_TIME, SENSORS, VEHICLE, CARLA_IP, MAP, INVERSE, NO_AGENTS
 
-from utils import tensorboard_log, visdom_log, visdom_initialize_windows, init_reporting, save_info
+from utils import tensorboard_log, visdom_log, visdom_initialize_windows, init_reporting, save_info, \
+    configure_simulation
 
 
 def main():
@@ -110,7 +111,7 @@ def run_client(args):
 
     # load spawnpoints from csv -> generate spawn points from notebooks/20200414_setting_points.ipynb
     spawn_points_df = pd.read_csv(f'{DATA_PATH}/spawn_points/{args.map}.csv')
-    spawn_points = df_to_spawn_points(spawn_points_df, n=10000, inverse=False) #We keep it here in order to have one way simulation within one script
+    spawn_points = df_to_spawn_points(spawn_points_df, n=10000, inverse=INVERSE) #We keep it here in order to have one way simulation within one script
 
     # Controller initialization - we initialize one controller for n-agents, what happens in multiprocessing.
     if args.controller is 'MPC':
@@ -148,7 +149,7 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
     world = environment.reset_env(args)
     agent_config = {'world':world, 'controller':controller, 'vehicle':args.vehicle,
                     'sensors':SENSORS, 'spawn_points':spawn_points}
-    environment.init_agents(no_agents=5, agent_config=agent_config)
+    environment.init_agents(no_agents=NO_AGENTS, agent_config=agent_config)
     environment.init_vehicles()
     spectator = world.get_spectator()
     spectator.set_transform(numpy_to_transform(

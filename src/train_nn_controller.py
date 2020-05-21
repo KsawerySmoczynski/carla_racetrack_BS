@@ -19,9 +19,9 @@ import torch
 #Configs
 #TODO Add dynamically generated foldername based on config settings and date.
 from config import DATA_PATH, STORE_DATA, FRAMERATE, TENSORBOARD_DATA, ALPHA, \
-    DATE_TIME, configure_simulation, SENSORS, VEHICLE, CARLA_IP, LEARNING_RATE, NUMBER_OF_EPOCHS, BATCH_SIZE, RANDOM_SEED, EXP_BUFFER
+    DATE_TIME, SENSORS, VEHICLE, CARLA_IP, LEARNING_RATE, NUMBER_OF_EPOCHS, BATCH_SIZE, RANDOM_SEED, EXP_BUFFER
 
-from utils import save_episode_info, tensorboard_log, visdom_log, visdom_initialize_windows
+from utils import save_episode_info, tensorboard_log, visdom_log, visdom_initialize_windows, configure_simulation
 
 
 def main():

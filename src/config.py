@@ -1,6 +1,5 @@
 import datetime
 import json
-import carla
 
 config_dict = json.load(open('../config.json'))
 
@@ -16,7 +15,8 @@ EXPERIMENTS_PATH = f'{DATA_PATH}/experiments'
 #World and simulator config
 CARLA_IP = config_dict['carla_ip']
 FRAMERATE = 30
-MAP = 'RaceTrack2'
+MAP = 'circut_spa'
+INVERSE = True
 VEHICLE = 'vehicle.audi.tt'
 
 #Controller config
@@ -31,20 +31,10 @@ SENSORS = {
 }
 
 # RL config
+NO_AGENTS = 2
 ALPHA = .9975
 LEARNING_RATE = 0.001
 NUMBER_OF_EPOCHS = 100
 BATCH_SIZE = 20
 RANDOM_SEED = 42
 EXP_BUFFER = 4
-
-def configure_simulation(args) -> carla.Client:
-    '''
-    Function for client and connection creation.
-    :param args:
-    :return: carla.Client, client object connected to the carla Simulator
-    '''
-    client = carla.Client(args.host, args.port)
-    client.set_timeout(5.0)  # seconds
-
-    return client

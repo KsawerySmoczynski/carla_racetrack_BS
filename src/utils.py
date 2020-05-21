@@ -178,3 +178,15 @@ def save_info(path:str, state:dict, action:dict, reward:float) -> None:
     with open(f'{path}/episode_info.csv', 'a') as file:
         file.write(info)
     pass
+
+
+def configure_simulation(args) -> carla.Client:
+    '''
+    Function for client and connection creation.
+    :param args:
+    :return: carla.Client, client object connected to the carla Simulator
+    '''
+    client = carla.Client(args.host, args.port)
+    client.set_timeout(5.0)  # seconds
+
+    return client

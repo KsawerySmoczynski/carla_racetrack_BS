@@ -8,7 +8,7 @@ import visdom as vis
 from PIL import Image
 from ast import literal_eval
 
-from config import DATE_TIME, SENSORS, EXPERIMENTS_PATH, MAP
+from config import DATE_TIME, SENSORS, EXPERIMENTS_PATH, MAP, INVERSE
 
 
 def vis_initialize_windows(visdom:vis.Visdom, sensors:dict):
@@ -96,9 +96,12 @@ def main():
 
     visdom = vis.Visdom(port=6006)
 
-    experiment = sorted(os.listdir(f'{EXPERIMENTS_PATH}/{MAP}'))[-1]
-    controller = sorted(os.listdir(f'{EXPERIMENTS_PATH}/{MAP}/{experiment}'))[-1]
-    vis_run(visdom=visdom, data_path=f'{EXPERIMENTS_PATH}/{MAP}/{experiment}/{controller}')
+    experiment = sorted(os.listdir(f'{EXPERIMENTS_PATH}/{MAP}{"_inverse"*INVERSE}'))[-1]
+    controller = sorted(os.listdir(f'{EXPERIMENTS_PATH}/{MAP}{"_inverse"*INVERSE}/{experiment}'))[-1]
+    vis_run(visdom=visdom, data_path=f'{EXPERIMENTS_PATH}/{MAP}{"_inverse"*INVERSE}/{experiment}/{controller}')
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print('\nCancelled by user. Bye!')
