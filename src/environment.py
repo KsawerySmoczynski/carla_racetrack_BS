@@ -1,22 +1,23 @@
 import argparse
+import copy
+
 import numpy as np
 import carla
+import torch.multiprocessing as mp
 
-
-from config import IMAGE_DOWNSIZE_FACTOR, FRAMERATE, DATA_PATH, DATE_TIME
+#Local imports
+from config import IMAGE_DOWNSIZE_FACTOR, FRAMERATE, DATA_PATH, DATE_TIME, SENSORS
 from control.abstract_control import Controller
-
-#NAGRODA (Dystans do - Dystans przejechany)
 from spawn import sensors_config, numpy_to_transform, velocity_to_kmh, transform_to_numpy, location_to_numpy, \
     to_vehicle_control
-from utils import to_rgb_resized, to_array, calc_distance, save_img
+from utils import to_rgb_resized, to_array, calc_distance, save_img, init_reporting
 
 
 # For saving imgs
 # https://github.com/drj11/pypng/
 
 class Agent:
-    def __init__(self, world:carla.World, controller:Controller, vehicle:str, sensors:dict, spawn_points:np.array, no_data_points:int=4):
+    def __init__(self, world:carla.World, controller:Controller, vehicle:str, sensors:dict, spawn_points:np.array, spawn_point_idx:int=None, no_data_points:int=4):
         '''
         All of the default data is stored in the form of numpy array,
         transforms to other formats are performed ad hoc.
@@ -24,6 +25,9 @@ class Agent:
         :param controller:Controller, class inherited from abstract class Controller providing control method
         :param vehicle:str, exact vehicle blueprint name
         :param sensors:dictionary imported from config describing which sensors agent should use
+        :param spawn_points: np.array
+        :param spawn_point_idx:int,
+        :param no_data_points:int,
         '''
         self.world = world
         self.map = world.get_map().name
@@ -31,7 +35,7 @@ class Agent:
         self.controller = controller
         self.sensors = sensors_config(self.world.get_blueprint_library(), depth=sensors['depth'],
                                       collision=sensors['collisions'], rgb=sensors['rgb'])
-        self.spawn_point_idx = int(np.random.randint(len(spawn_points)))
+        self.spawn_point_idx = spawn_point_idx or int(np.random.randint(len(spawn_points)))
         self.spawn_point = spawn_points[self.spawn_point_idx]
         self.waypoints = np.concatenate([spawn_points[self.spawn_point_idx:, :], spawn_points[:self.spawn_point_idx, :]])[:, :3]  # delete yaw column
         self.initialized = False
@@ -43,7 +47,7 @@ class Agent:
 
     @property
     def save_path(self) -> str:
-        return f'{DATA_PATH}/experiments/{self.map}/{DATE_TIME}_{self.__str__()}'
+        return f'{DATA_PATH}/experiments/{self.map}/{DATE_TIME}/{self.__str__()}'
 
     @property
     def transform(self):
@@ -143,6 +147,21 @@ class Agent:
         else:
             indexes = [idx for idx in range(step-self.no_data_points, step)]
         return indexes
+
+
+    def set_waypoints(self, spawn_points:np.array, spawn_point_idx:int):
+        '''
+        For explicit selection of spawn point and waypoints of agent
+        :param spawn_points: np.array, consecutive points forming race track (x,y,z,yaw)
+        :param spawn_point_idx: int
+        :return: None
+        '''
+        self.spawn_point_idx = spawn_point_idx
+        self.spawn_point = spawn_points[spawn_point_idx]
+        self.waypoints = np.concatenate(
+            [spawn_points[self.spawn_point_idx:, :],
+             spawn_points[:self.spawn_point_idx, :]]
+        )[:,:3]  # delete yaw column
 
 
     def initialize_vehicle(self) -> None:
@@ -247,7 +266,7 @@ class Environment:
         '''
         self.client = client
         self.world = None
-        # self.agents = []
+        self.agents = []
 
 
     def reset_env(self, args:argparse.ArgumentParser) -> carla.World:
@@ -267,6 +286,109 @@ class Environment:
             self.world.apply_settings(settings)
         return self.world
 
+    def init_agents(self, no_agents:int, agent_config:dict) -> None:
+        points_len = len(agent_config['spawn_points'])
+        spawn_point_indexes = (np.linspace(0, points_len - (points_len/no_agents), no_agents, dtype=np.int) + \
+                               np.random.randint(0, points_len)) % points_len
+        for idx in spawn_point_indexes:
+            current_agent_config = {**agent_config, 'spawn_point_idx':idx}
+            self.agents.append(Agent(**current_agent_config))
+
+    def init_vehicles(self) -> None:
+        '''
+        Carfully, uses world.tick()
+        :return: None
+        '''
+        for agent in self.agents:
+            agent.initialize_vehicle()
+        self.world.tick()
+        self.world.tick()
+
+    def stabilize_vehicles(self) -> None:
+        '''
+        Stabilizes vehicles on their start points
+        :return:
+        '''
+
+        def eq_transforms(agents_transforms:np.array, current_agents_transforms:np.array) -> bool:
+            '''
+            Compares previous agents transforms with current ones
+            :param agents_transforms: np.array
+            :param current_agents_transforms: np.array
+            :return: bool
+            '''
+            value = np.array([(prev==curr).all() for prev, curr in zip(agents_transforms, current_agents_transforms)]).all()
+            return value
+
+        at = np.array([None for agent in self.agents])
+        no_ticks = 0
+        while True:
+            cat = np.array([agent.transform for agent in self.agents])
+            if eq_transforms(agents_transforms=at, current_agents_transforms=cat) or no_ticks > 100:
+                break
+            at = cat
+            self.world.tick()
+            no_ticks += 1
+
+    def initialize_agents_sensors(self) -> None:
+        '''
+        Initilizes sensors for every agent
+        :return: None
+        '''
+        for agent in self.agents:
+            agent.initialize_sensors()
+
+    def initialize_agents_reporting(self, sensors:dict) -> None:
+        '''
+        Initializes reporting files for every agent.
+        :return: None
+        '''
+        for agent in self.agents:
+            init_reporting(path=agent.save_path, sensors=sensors)
+
+    def get_agents_states(self, step:int, retrieve_data:bool=False) -> list:
+        '''
+        Multiprocessing state retrieval from agents
+        :param step:
+        :param retrieve_data:
+        :return:
+        '''
+
+        # https://stackoverflow.com/questions/29630217/multiprocessing-in-ipython-console-on-windows-machine-if-name-requirement
+        # https://stackoverflow.com/questions/23665414/multiprocessing-using-imported-modules
+        # https://pymotw.com/2/multiprocessing/basics.html -> subclassing process i importable target function
+
+        #TODO wrong
+        # TODO https://docs.python.org/3/library/concurrency.html
+        #TODO https://docs.python.org/3/library/multiprocessing.html - read all
+
+        def worker(agent, step, retrieve_data, states):
+            state = agent.get_state(step, retrieve_data)
+            states[str(agent)] = state
+
+        states = dict({})
+        processes = []
+        for agent in self.agents:
+            p = mp.Process(target=worker, args=(agent, step, retrieve_data, states))
+            processes.append(p)
+            p.start()
+
+        for p in processes:
+            p.join()
+
+        return copy.deepcopy(states)
+
+    def get_agents_actions(self, states:list) -> list:
+        pass
+
+    def get_agents_states_actions(self, step:int, retrieve_data:bool=False) -> dict:
+        pass
+
+    def destroy_agents(self):
+        for agent in self.agents:
+            agent.destroy(data=True)
+        self.agents = []
+
     def toggle_world(self, frames:int=FRAMERATE) -> None:
         '''
         Toggle world state from synchonous mode to normal mode.
@@ -279,7 +401,7 @@ class Environment:
         settings.fixed_delta_seconds = abs(float(settings.fixed_delta_seconds or 0) - 1/frames)
         self.world.apply_settings(settings)
 
-    def calc_reward(self, points_3D:np.array, state:dict, next_state, alpha: float = .995, step: int = 0) -> float:
+    def calc_reward(self, points_3D:np.array, state:dict, next_state, alpha: float = .995, punishment:float=0.1, step: int = 0) -> float:
         '''
         Calculating reward based on location and speed between 2 consecutive states.
 
@@ -293,8 +415,8 @@ class Environment:
 
         if calc_distance(actor_location=next_state['location'], points_3D=points_3D) > calc_distance(
                 actor_location=state['location'], points_3D=points_3D):
-            return - (next_state['velocity'] / (state['velocity'] + 1)) * (alpha ** step)
+            return -(next_state['velocity'] / (state['velocity'] + 1)) * (alpha ** step) - punishment
 
         # return (next_state['velocity']/(state['velocity'] + 1)) * \
         #        ((tracklen - calc_from_closest_distance) - distance_travelled )  * (alpha**step)
-        return (next_state['velocity'] / (state['velocity'] + 1)) * (alpha ** step)
+        return (next_state['velocity'] / (state['velocity'] + 1)) * (alpha ** step) - punishment

@@ -56,14 +56,15 @@ def to_vehicle_control(gas_brake:float, steer:float) -> carla.VehicleControl:
     :param steer:float in range <-1,1>
     :return: carla.VehicleControl
     '''
-    if gas_brake > 0:
-        return carla.VehicleControl(throttle = gas_brake, steer=steer, reverse=False)
-    elif (gas_brake < 0.4) & (gas_brake > 0.) :
+    #TODO -> podziel na 4 obszary i przeskaluj dynamikę
+    if gas_brake > 0.5:
+        return carla.VehicleControl(throttle = 2*gas_brake-1, steer=steer, reverse=False)
+    elif (gas_brake < 0.5) & (gas_brake > 0.) :
         return carla.VehicleControl(throttle=0, steer=steer, reverse=False)
-    elif (gas_brake < 0.) & (gas_brake > -0.7) :
-        return carla.VehicleControl(throttle=0, brake=-gas_brake+0.3, steer=steer, reverse=False)
+    elif (gas_brake < 0.) & (gas_brake > -0.5) :
+        return carla.VehicleControl(throttle=0, brake=-2*gas_brake-1, steer=steer, reverse=False)
     else:
-        return carla.VehicleControl(throttle=-gas_brake, steer=-steer, reverse=True)
+        return carla.VehicleControl(throttle=-2*gas_brake-1, steer=-steer, reverse=True)
 
 def set_spectator_above_actor(spectator:carla.Actor, transform:np.array) -> None:
     '''

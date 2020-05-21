@@ -1,4 +1,3 @@
-import time
 import argparse
 import numpy as np
 import pandas as pd
@@ -81,12 +80,6 @@ def main():
         default=True,
         help='Decides if to log information to tensorboard (default: False)')
 
-    argparser.add_argument(
-        '--visdom',
-        metavar='V',
-        default=False,
-        help='Decides if to log information to visdom, (default: True)')
-
     args = argparser.parse_known_args()
     if len(args) > 1:
         args = args[0]
@@ -98,7 +91,6 @@ def run_client(args):
 
     args.host = 'localhost'
     args.port = 2000
-    # Initialize tensorboard -> initialize writer inside run episode so that every
 
     args.tensorboard = False
     writer = None
@@ -110,11 +102,6 @@ def run_client(args):
                                    flush_secs=5, max_queue=5)
     elif args.tensorboard:
         writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_FRAMES{args.frames}', flush_secs=5)
-
-
-
-    args.visdom = False
-    viz = vis.Visdom(port=6006) if args.visdom else None
 
     # Connecting to client -> later package it in function which checks if the world is already loaded and if the settings are the same.
     # In order to host more scripts concurrently
@@ -159,9 +146,9 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
 
     environment = Environment(client=client)
     world = environment.reset_env(args)
-    agent = Agent(world=world, controller=controller, vehicle=args.vehicle,
-                  sensors=SENSORS, spawn_points=spawn_points)
-
+    agent_config = {'world':world, 'controller':controller, 'vehicle':args.vehicle,
+                    'sensors':SENSORS, 'spawn_points':spawn_points}
+    agent = Agent(**agent_config)
     agent.initialize_vehicle()
     spectator = world.get_spectator()
     spectator.set_transform(numpy_to_transform(
@@ -182,17 +169,13 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
 
     # Release handbrake
     world.tick()
-    time.sleep(1)# x4? allow controll each 4 frames
-
 
     init_reporting(path=agent.save_path, sensors=SENSORS)
-    windows = visdom_initialize_windows(viz=viz, title=DATE_TIME, sensors=SENSORS, location=agent.location) if args.visdom else None
 
     for step in range(NUM_STEPS):  #TODO change to while with conditions
         #Retrieve state and actions
 
         state = agent.get_state(step, retrieve_data=True)
-        # states.append(state)
 
         #Check if state is terminal
         if state['distance_2finish'] < 5:

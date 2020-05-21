@@ -16,9 +16,9 @@ from tensorboardX import SummaryWriter
 #Configs
 #TODO Add dynamically generated foldername based on config settings and date.
 from config import DATA_PATH, STORE_DATA, FRAMERATE, TENSORBOARD_DATA, ALPHA, \
-    DATE_TIME, configure_simulation, SENSORS, VEHICLE, CARLA_IP
+    DATE_TIME, configure_simulation, SENSORS, VEHICLE, CARLA_IP, MAP
 
-from utils import save_episode_info, tensorboard_log, visdom_log, visdom_initialize_windows
+from utils import tensorboard_log, visdom_log, visdom_initialize_windows, init_reporting, save_info
 
 
 def main():
@@ -51,7 +51,7 @@ def main():
     argparser.add_argument(
         '--map',
         metavar='M',
-        default='circut_spa',
+        default=MAP,
         help='Avialable maps: "circut_spa", "RaceTrack", "Racetrack2". Default: "circut_spa"')
     argparser.add_argument(
         '--vehicle',
@@ -78,14 +78,8 @@ def main():
     argparser.add_argument(
         '--tensorboard',
         metavar='TB',
-        default=False,
-        help='Decides if to log information to tensorboard (default: False)')
-
-    argparser.add_argument(
-        '--visdom',
-        metavar='V',
         default=True,
-        help='Decides if to log information to visdom, (default: True)')
+        help='Decides if to log information to tensorboard (default: False)')
 
     args = argparser.parse_known_args()
     if len(args) > 1:
@@ -95,11 +89,12 @@ def main():
 
 
 def run_client(args):
-    args = main() #change to dictionary with vars(main())
-
+    args = main()
     args.host = 'localhost'
     args.port = 2000
-    # Initialize tensorboard -> initialize writer inside run episode so that every
+
+    args.tensorboard = False
+    writer = None
     if args.controller == 'MPC':
         TARGET_SPEED = 90
         STEPS_AHEAD = 10
@@ -108,26 +103,16 @@ def run_client(args):
                                    flush_secs=5, max_queue=5)
     elif args.tensorboard:
         writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_FRAMES{args.frames}', flush_secs=5)
-    else:
-        writer = None
-
-    args.visdom = False
-    viz = vis.Visdom(port=6006) if args.visdom else None
 
     # Connecting to client -> later package it in function which checks if the world is already loaded and if the settings are the same.
     # In order to host more scripts concurrently
     client = configure_simulation(args)
 
-    # create config dict for raport
-    #
-    # Here let's create data structure which will let us save summary results from each run_episode iteration
-    # for ex. status, distance travelled, reward obtained -> may be dataframe, we'll append each row after iteration
-
     # load spawnpoints from csv -> generate spawn points from notebooks/20200414_setting_points.ipynb
     spawn_points_df = pd.read_csv(f'{DATA_PATH}/spawn_points/{args.map}.csv')
     spawn_points = df_to_spawn_points(spawn_points_df, n=10000, inverse=False) #We keep it here in order to have one way simulation within one script
 
-    # Controller initialization
+    # Controller initialization - we initialize one controller for n-agents, what happens in multiprocessing.
     if args.controller is 'MPC':
         controller = MPCController(target_speed=TARGET_SPEED, steps_ahead=STEPS_AHEAD, dt=0.05)
 
@@ -135,14 +120,12 @@ def run_client(args):
                                                             controller=controller,
                                                             spawn_points=spawn_points,
                                                             writer=writer,
-                                                            viz=viz,
                                                             args=args)
 
-    save_episode_info(status, actor_dict, env_dict, sensor_data)
 
 
 def run_episode(client:carla.Client, controller:Controller, spawn_points:np.array,
-                writer:SummaryWriter, viz:vis.Visdom, args) -> (str, dict, dict, list):
+                writer:SummaryWriter, args) -> (str, dict, dict, list):
     '''
     Runs single episode. Configures world and agent, spawns it on map and controlls it from start point to termination
     state.
@@ -163,54 +146,33 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
 
     environment = Environment(client=client)
     world = environment.reset_env(args)
-    agent = Agent(world=world, controller=controller, vehicle=args.vehicle,
-                  sensors=SENSORS, spawn_points=spawn_points)
-    agent2 = Agent(world=world, controller=controller, vehicle=args.vehicle,
-                  sensors=SENSORS, spawn_points=spawn_points)
-
-    agent.initialize_vehicle()
-    agent2.initialize_vehicle()
+    agent_config = {'world':world, 'controller':controller, 'vehicle':args.vehicle,
+                    'sensors':SENSORS, 'spawn_points':spawn_points}
+    environment.init_agents(no_agents=5, agent_config=agent_config)
+    environment.init_vehicles()
     spectator = world.get_spectator()
     spectator.set_transform(numpy_to_transform(
-        spawn_points[agent.spawn_point_idx-30]))
+        spawn_points[environment.agents[0].spawn_point_idx-30]))
 
-    agent_transform = None
-    world.tick()
-    world.tick()
-    # Calculate norm of all cordinates
-    spectator.set_transform(numpy_to_transform(
-        spawn_points[agent2.spawn_point_idx-30]))
-    while (agent_transform != agent.transform).any():
-        agent_transform = agent.transform
-        world.tick()
+    environment.stabilize_vehicles()
 
     #INITIALIZE SENSORS
-    agent.initialize_sensors()
-    agent2.initialize_sensors()
-    # Initialize visdom windows
+    environment.initialize_agents_sensors()
 
     # Release handbrake
     world.tick()
-    time.sleep(1)# x4? allow controll each 4 frames
 
-    windows = visdom_initialize_windows(viz=viz, title=DATE_TIME, sensors=SENSORS, location=agent.location) if args.visdom else None
+    environment.initialize_agents_reporting(sensors=SENSORS)
+
 
     for step in range(NUM_STEPS):  #TODO change to while with conditions
         #Retrieve state and actions
 
+        # states = environment.get_agents_states(step, retrieve_data=True)
         state = agent.get_state(step, retrieve_data=True)
-        state2 = agent2.get_state(step, retrieve_data=True)
-        # states.append(state)
-
-        #Check if state is terminal
-        if state['distance_2finish'] < 5:
-            status = 'Succes'
-            print('lap finished')
-            break
 
         #Apply action
         action = agent.play_step(state) #TODO split to two functions
-        action2 = agent2.play_step(state2)  # TODO split to two functions
         # actions.append(action)
 
         #Transit to next state
@@ -219,45 +181,21 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
             'velocity': agent.velocity,
             'location': agent.location
         }
-        next_state2 = {
-            'velocity': agent2.velocity,
-            'location': agent2.location
-        }
 
         #Receive reward
         reward = environment.calc_reward(points_3D=agent.waypoints, state=state, next_state=next_state,
                                          alpha=ALPHA, step=step)
-        reward2 = environment.calc_reward(points_3D=agent2.waypoints, state=state2, next_state=next_state2,
-                                         alpha=ALPHA, step=step)
-        # rewards.append(rewards)
+
+        save_info(path=agent.save_path, state=state, action=action, reward=reward)
+
         # print(f'step:{step} data:{len(agent.sensors["depth"]["data"])}')
         #Log
         if args.tensorboard:
             tensorboard_log(title=DATE_TIME, writer=writer, state=state,
                             action=action, reward=reward, step=step)
-        if args.visdom:
-            visdom_log(viz=viz, windows=windows, state=state, action=action, reward=reward, step=step)
-
-        if (step % 100 == 0):
-            set_spectator_above_actor(spectator, agent2.transform)
-
-        if ((agent.velocity < 20) & (step % 10 == 0)) or ((step+50) % 100 == 0):
+        if ((agent.velocity < 20) & (step % 10 == 0)) or (step % 50 == 0):
             set_spectator_above_actor(spectator, agent.transform)
         # time.sleep(0.1)
-
-    agent.destroy(data=True)
-    del environment
-
-        # Visdom render from depth_data
-        # Explore MPC configurations
-        # unpack_batch(batch, net, last_val_gamma):
-        # calculate for ex. distance and add to separate informative logging structure
-        # Uruchomienie 4 instancji środowiska?
-
-    if STORE_DATA:
-        pass
-    else:
-        sensors_data = None
 
     status, actor_dict, env_dict, sensor_data = str, dict, dict, list
 

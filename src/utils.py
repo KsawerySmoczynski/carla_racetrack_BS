@@ -53,7 +53,14 @@ def calc_distance(actor_location:np.array, points_3D:np.array, cut:float=0.02) -
 
 
 def visdom_initialize_windows(viz:visdom.Visdom, title:str, sensors:dict, location):
-
+    '''
+    Deprecated
+    :param viz:
+    :param title:
+    :param sensors:
+    :param location:
+    :return:
+    '''
     windows = {}
     if sensors['depth']:
         windows['depth'] = viz.image(np.zeros((3, 75, 100)), opts=dict(title=f'{title} Depth sensor', width=800, height=600))
@@ -73,7 +80,7 @@ def visdom_initialize_windows(viz:visdom.Visdom, title:str, sensors:dict, locati
 
 def visdom_log(viz:visdom.Visdom, windows:dict, state:dict, action:dict, reward:float, step:int) -> None:
     '''
-
+    Deprecated
     :param viz:
     :param windows:
     :param sensors:
