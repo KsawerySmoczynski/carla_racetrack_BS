@@ -19,7 +19,7 @@ import torch
 #Configs
 #TODO Add dynamically generated foldername based on config settings and date.
 from config import DATA_PATH, STORE_DATA, FRAMERATE, TENSORBOARD_DATA, ALPHA, \
-    DATE_TIME, SENSORS, VEHICLE, CARLA_IP, LEARNING_RATE, NUMBER_OF_EPOCHS, BATCH_SIZE, RANDOM_SEED, EXP_BUFFER
+    DATE, SENSORS, VEHICLE, CARLA_IP, LEARNING_RATE, NUMBER_OF_EPOCHS, BATCH_SIZE, RANDOM_SEED, EXP_BUFFER
 
 from utils import save_episode_info, tensorboard_log, visdom_log, visdom_initialize_windows, configure_simulation
 
@@ -111,7 +111,7 @@ def run_learning_session(args):
     args.port = 2000
     # Initialize tensorboard -> initialize writer inside run episode so that every
     if args.tensorboard:
-        writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_TS{TARGET_SPEED}_H{STEPS_AHEAD}_FRAMES{args.frames}_{DATE_TIME}',
+        writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_TS{TARGET_SPEED}_H{STEPS_AHEAD}_FRAMES{args.frames}_{DATE}',
                                flush_secs=5, max_queue=5)
     elif args.tensorboard:
         writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_FRAMES{args.frames}', flush_secs=5)
@@ -253,7 +253,7 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
     world.tick()
     time.sleep(1)# x4? allow controll each 4 frames
 
-    windows = visdom_initialize_windows(viz=viz, title=DATE_TIME, sensors=SENSORS, location=agent.location) if args.visdom else None
+    windows = visdom_initialize_windows(viz=viz, title=DATE, sensors=SENSORS, location=agent.location) if args.visdom else None
 
     for step in range(NUM_STEPS):  #TODO change to while with conditions
         #Retrieve state and actions
@@ -286,7 +286,7 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
         # print(f'step:{step} data:{len(agent.sensors["depth"]["data"])}')
         #Log
         if args.tensorboard:
-            tensorboard_log(title=DATE_TIME, writer=writer, state=state,
+            tensorboard_log(title=DATE, writer=writer, state=state,
                             action=action, reward=reward, step=step)
         if args.visdom:
             visdom_log(viz=viz, windows=windows, state=state, action=action, reward=reward, step=step)

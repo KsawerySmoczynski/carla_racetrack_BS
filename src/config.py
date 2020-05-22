@@ -4,7 +4,8 @@ import json
 config_dict = json.load(open('../config.json'))
 
 #General
-DATE_TIME = datetime.datetime.now().strftime('%Y%m%d_%H%M')
+EXPERIMENT = 0
+DATE = datetime.datetime.now().strftime("%Y%m%d")
 
 #Storage config
 STORE_DATA = True
@@ -15,12 +16,12 @@ EXPERIMENTS_PATH = f'{DATA_PATH}/experiments'
 #World and simulator config
 CARLA_IP = config_dict['carla_ip']
 FRAMERATE = 30
-MAP = 'circut_spa'
+MAP = 'RaceTrack2'
 INVERSE = False
 VEHICLE = 'vehicle.audi.tt'
 
 #Controller config
-IMAGE_DOWNSIZE_FACTOR = 8
+IMAGE_DOWNSIZE_FACTOR = 10
 STEER_BOUNDS = (-1, 1)
 THROTTLE_BOUNDS = (-1,1)
 #Order of sensors in dict is important for the logging purposes
@@ -31,8 +32,9 @@ SENSORS = {
 }
 
 # RL config
+FEATURES_FOR_BATCH = ['step','collisions','velocity','steer','gas_brake','reward']
 NO_AGENTS = 2
-ALPHA = .9975
+ALPHA = .999
 LEARNING_RATE = 0.001
 NUMBER_OF_EPOCHS = 100
 BATCH_SIZE = 20
