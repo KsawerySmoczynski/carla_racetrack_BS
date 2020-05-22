@@ -15,7 +15,7 @@ EXPERIMENTS_PATH = f'{DATA_PATH}/experiments'
 #World and simulator config
 CARLA_IP = config_dict['carla_ip']
 FRAMERATE = 30
-MAP = 'circut_spa'
+MAP = 'RaceTrack'
 INVERSE = False
 VEHICLE = 'vehicle.audi.tt'
 
@@ -32,7 +32,7 @@ SENSORS = {
 
 # RL config
 NO_AGENTS = 2
-ALPHA = .9975
+ALPHA = .999
 LEARNING_RATE = 0.001
 NUMBER_OF_EPOCHS = 100
 BATCH_SIZE = 20
