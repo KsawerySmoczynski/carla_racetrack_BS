@@ -168,23 +168,27 @@ def run_learning_session(args):
     """
     TODO
     
+    póki co discreet action space, potem do przerobienia na continuous
+    
     for epoch in epochs:
+        tworzymy zbachowane dane i tasujemy epizody wewnątrz nich
         for batch in batches:
-            zbieramy sobie dane z batchu
-            puszczamy dane z batchu przez sieć (potrzebujemy dodać zwracanie rewardu, można zacząc od prędkości + czasu od rozpoczęcia epizodu?)
-            uzyskujemy sterowańsko i krytykowańsko
+            na początek zerujemy gradient, wyciągamy [stany, akcje, q wartości] z batchu w tensorach
+        
+            wrzucamy stany do sieci, uzyskujemy prwadopodobienstwa akcji i wartości stanów
             
-            i tutaj jest tricky bo trzeba jakoś advantage zrobić i niby to rozumiałem a teraz niebardzo wiem jak się zabrać
-            w wielu rozwiązaniach liczy się entropy z jakiegoś powodu? nwm po co, ale pewnie trzeba tylko nwm dlaczego XD
+            z wczesniejszych q wartości i wartości stanów liczymy mse_loss
             
-            jak już mamy loss całościowy zebrany to robimy cyk .backward() i optimizer.step() czy coś podobnego
+            log_softmax na prawdopodobienstwach akcji
             
-            no i lecimy następny batch
+            liczymy advantage przez roznice q wartosci i wartosci stanow
             
-            i co jakiś czas sobie możemy zapisywać aktualny model i wszystko bangla
+            liczym policy_loss, entropy_loss i robimy dwa backwardy, jeden na policy_loss drugi na entropy_loss i wczesniejsze mse_loss
+            (entropy_loss liczymy żeby zbyt nie karać sieci jak nie jest pewna akcji i daje niskie prawdopodobieństwa)
             
+            step na optimizerze i lecimy dalej
             
-            
+            model zapisujemy co X kroków albo w momencie jak mamy największy reward
     
     """
     
