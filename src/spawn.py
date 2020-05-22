@@ -80,7 +80,7 @@ def set_spectator_above_actor(spectator:carla.Actor, transform:np.array) -> None
 
 
 def sensors_config(blueprint_library:carla.BlueprintLibrary,
-                   depth:bool=True, collision:bool=True, rgb:bool=False) -> dict:
+                   depth:bool=True, rgb:bool=False, collision:bool=True,) -> dict:
     '''
     Configures sensors blueprints, relative localization and transformations related to sensor.
     :param blueprint_library:carla.BlueprintLibrary
@@ -98,6 +98,14 @@ def sensors_config(blueprint_library:carla.BlueprintLibrary,
                             'transform': depth_relative_transform,
                             'color_converter':cc}
 
+    if rgb:
+        rgb_bp = blueprint_library.find('sensor.camera.rgb')
+        rgb_relative_transform = carla.Transform(carla.Location(1.4, 0, 1.4), carla.Rotation(-5., 0, 0))
+        sensors['rgb'] = {
+            'blueprint': rgb_bp,
+            'transform': rgb_relative_transform,
+                                    }
+
     if collision:
         collision_bp = blueprint_library.find('sensor.other.collision')
         collision_relative_transform = carla.Transform(carla.Location(0, 0, 0), carla.Rotation(0, 0, 0))
@@ -105,12 +113,5 @@ def sensors_config(blueprint_library:carla.BlueprintLibrary,
             'blueprint': collision_bp,
             'transform': collision_relative_transform
                                 }
-    if rgb:
-        rgb_bp = blueprint_library.find('sensor.camera.rgb')
-        rgb_relative_transform = carla.Transform(carla.Location(1.4, 0, 1.4), carla.Rotation(-5., 0, 0))
-        sensors['rgb'] = {
-            'blueprint': rgb_bp,
-            'transform': rgb_relative_transform,
-                            }
 
     return sensors

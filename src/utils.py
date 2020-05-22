@@ -8,7 +8,7 @@ import carla
 import visdom
 from tensorboardX import SummaryWriter
 
-from config import IMAGE_DOWNSIZE_FACTOR, DATE_TIME
+from config import IMAGE_DOWNSIZE_FACTOR, DATE
 from spawn import location_to_numpy, calc_azimuth, velocity_to_kmh
 
 to_array = lambda img: np.asarray(img.raw_data, dtype=np.int8).reshape(img.height, img.width, 4)  # 4 because image is in BRGB format
@@ -124,7 +124,7 @@ def tensorboard_log(title:str, writer:SummaryWriter, state:dict, action:dict, re
     writer.add_scalar(tag=f'{title}/steer', scalar_value=action['steer'], global_step=step)
     writer.add_scalar(tag=f'{title}/velocity', scalar_value=state['velocity'],
                       global_step=step)
-    writer.add_scalar(tag=f'{DATE_TIME}/reward', scalar_value=reward, global_step=step)
+    writer.add_scalar(tag=f'{DATE}/reward', scalar_value=reward, global_step=step)
 
 
 def save_img(img:np.array, path:str, mode:str='RGB') -> None:
@@ -154,7 +154,7 @@ def init_reporting(path:str, sensors:dict) -> None:
         os.makedirs(name='/'.join(path.split('/')), exist_ok=True)
 
     header = 'step'
-    sensors = ','.join([k*v for k,v in sensors.items()])
+    sensors = ','.join([f'{k * v}_indexes' for k,v in sensors.items()])
     header = f'{header},{sensors}'
     header = f'{header},velocity,velocity_vec,yaw,location,distance_2finish,steer,gas_brake,reward\n'
 

@@ -14,13 +14,13 @@ from control.abstract_control import Controller
 from tensorboardX import SummaryWriter
 
 #Configs
-#TODO Add dynamically generated foldername based on config settings and date.
 from config import DATA_PATH, STORE_DATA, FRAMERATE, TENSORBOARD_DATA, ALPHA, \
-    DATE_TIME, SENSORS, VEHICLE, CARLA_IP, MAP, INVERSE, NO_AGENTS
+    DATE, SENSORS, VEHICLE, CARLA_IP, MAP, INVERSE, NO_AGENTS
 
 from utils import tensorboard_log, visdom_log, visdom_initialize_windows, init_reporting, save_info, \
     configure_simulation
 
+#Use this script only for data generation
 
 def main():
     argparser = argparse.ArgumentParser()
@@ -100,7 +100,7 @@ def run_client(args):
         TARGET_SPEED = 90
         STEPS_AHEAD = 10
         if args.tensorboard:
-            writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_TS{TARGET_SPEED}_H{STEPS_AHEAD}_FRAMES{args.frames}_{DATE_TIME}',
+            writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_TS{TARGET_SPEED}_H{STEPS_AHEAD}_FRAMES{args.frames}_{DATE}',
                                    flush_secs=5, max_queue=5)
     elif args.tensorboard:
         writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_FRAMES{args.frames}', flush_secs=5)

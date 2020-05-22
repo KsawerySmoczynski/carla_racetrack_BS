@@ -3,10 +3,11 @@ import copy
 
 import numpy as np
 import carla
+import torch
 import torch.multiprocessing as mp
 
 #Local imports
-from config import IMAGE_DOWNSIZE_FACTOR, FRAMERATE, DATA_PATH, DATE_TIME, SENSORS, INVERSE
+from config import IMAGE_DOWNSIZE_FACTOR, FRAMERATE, DATA_PATH, DATE, SENSORS, INVERSE, EXPERIMENT
 from control.abstract_control import Controller
 from spawn import sensors_config, numpy_to_transform, velocity_to_kmh, transform_to_numpy, location_to_numpy, \
     to_vehicle_control
@@ -33,8 +34,9 @@ class Agent:
         self.map = world.get_map().name
         self.actor:carla.Vehicle = self.world.get_blueprint_library().find(vehicle)
         self.controller = controller
-        self.sensors = sensors_config(self.world.get_blueprint_library(), depth=sensors['depth'],
-                                      collision=sensors['collisions'], rgb=sensors['rgb'])
+        # self.sensors = sensors_config(self.world.get_blueprint_library(), depth=sensors['depth'],
+        #                               collision=sensors['collisions'], rgb=sensors['rgb'])
+        self.sensors = sensors_config(self.world.get_blueprint_library(), **sensors)
         self.spawn_point_idx = spawn_point_idx or int(np.random.randint(len(spawn_points)))
         self.spawn_point = spawn_points[self.spawn_point_idx]
         self.waypoints = np.concatenate([spawn_points[self.spawn_point_idx:, :], spawn_points[:self.spawn_point_idx, :]])[:, :3]  # delete yaw column
@@ -47,7 +49,7 @@ class Agent:
 
     @property
     def save_path(self) -> str:
-        return f'{DATA_PATH}/experiments/{self.map}{"_inverse"*INVERSE}/{DATE_TIME}/{self.__str__()}'
+        return f'{DATA_PATH}/experiments/{self.map}{"_inverse"*INVERSE}/{DATE}/{EXPERIMENT}/{self.__str__()}'
 
     @property
     def transform(self):
@@ -90,7 +92,7 @@ class Agent:
 
     #TODO add initial empty state from which keys will be extracted for logging
 
-    def get_state(self, step, retrieve_data:bool=False):
+    def get_state(self, step, retrieve_data:bool=False, **kwargs):
         '''
         Retrieves information about the state from agent's sensors
         :param step:int, step number needed for computation of indexes for logging
@@ -117,6 +119,13 @@ class Agent:
         state['location'] = list(self.location)
         state['distance_2finish'] = calc_distance(actor_location=state['location'],
                                                   points_3D=self.waypoints)
+        # if 'hx' in kwargs.keys() and 'cx' in kwargs.keys():
+        #     state['hx'] = kwargs['hx']
+        #     state['cx'] = kwargs['cx']
+        # else:
+        #     state['hx'] = torch.zeros(size=(1, self.net.lstm.hidden_size))
+        #     state['cx'] = torch.zeros(size=(1, self.net.lstm.hidden_size))
+
         self._release_data(state['step'])
 
         return state
@@ -182,6 +191,7 @@ class Agent:
         Initializes sensors based on intial sensor dict loaded from config
         :return: None
         '''
+        #TODO normalization of frames
         if 'depth' in self.sensors.keys():
             self.sensors['depth']['data'] = []
             self.sensors['depth']['actor'] = self.world.spawn_actor(blueprint=self.sensors['depth']['blueprint'],
