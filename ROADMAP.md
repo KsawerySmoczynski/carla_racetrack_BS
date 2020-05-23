@@ -54,3 +54,18 @@ Potencjalne problemy z f. celu:
 
 # READ
 - [Thesis](https://esc.fnwi.uva.nl/thesis/centraal/files/f285129090.pdf)
+
+# Potencjalny, zredukowany action space:
+    Wszelkie sterowanie kierownicą i gazem/hamulcem to zmiana względna. Czyli np. jak zrobimy akcje 5. -> 1. -> 1. to będziemy cały czas mieć mocno wciśnięty gaz i podwójnie mocno koła skręcone w prawo
+    1. Skręt w prawo delikatny
+    2. Skręt w prawo agresywny
+    3. Skręt w lewo delikatny
+    4. Skręt w lewo agresywny
+    5. Gaz mocno
+    6. Gaz delikatne
+    7. Hamulec mocno
+    8. Hamulec delikatnie
+    
+    Taki action space nie jest idealny, ale jest nieduży i pozwala na zrobienie większości manewrów
+    
+    Przy użyciu takiego action space możemy użyć sobie DQN i może się przeuczy wszystko fajnie.
