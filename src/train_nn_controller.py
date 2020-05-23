@@ -25,6 +25,8 @@ from utils import save_episode_info, tensorboard_log, visdom_log, visdom_initial
 
 
 def main():
+    #set a seed for batch shuffling
+    random.seed(RANDOM_SEED)
     #parse args
     #   - GPUS
     #   - CONTROLLER
@@ -191,20 +193,75 @@ def run_learning_session(args):
             model zapisujemy co X kroków albo w momencie jak mamy największy reward
     
     """
+
+def extract_batch_data(filenames_batch):
+        
+    states = []
+    actions = []
+    rewards = []
+    not_done_idx = []
+    last_states = []
+    for idx, exp in enumerate(batch):
+        # unpack states, actions, and rewards into separate lists
+        states.append(np.array(exp.state, copy=False))
+        actions.append(int(exp.action))
+        rewards.append(exp.reward)
+        if exp.last_state is not None:
+            # if the episode has not yet ended, save the index and state prime of the transition
+            not_done_idx.append(idx)
+            last_states.append(np.array(exp.last_state, copy=False))
+    states_v = torch.FloatTensor(states).to(device)
+    actions_t = torch.LongTensor(actions).to(device)
+
+    # handle rewards
+    rewards_np = np.array(rewards, dtype=np.float32)
+    # if at least one transition was non-terminal
+    if not_done_idx:
+        last_states_v = torch.FloatTensor(last_states).to(device)
+        # calculate the values of all the state primes from the net
+        last_vals_v = net(last_states_v)[1]
+        last_vals_np = last_vals_v.data.cpu().numpy()[:, 0]
+        # apply the Bellman equation adding GAMMA * V(s') to the reward for all non-terminal states
+        # terminal states will contain just the reward received
+        rewards_np[not_done_idx] += last_val_gamma * last_vals_np
+
+    # these are the Q(s,a) values we will use to calculate the advantage and value loss
+    q_vals_v = torch.FloatTensor(rewards_np).to(device)
+    return states_v, actions_t, q_vals_v
+
+    states = []
+    steering = []
+    rewards = []
+    non_terminal_idxs = []
+    terminal_idxs = []
+    for episode in filenames_batch:
+        pd.read_csv(episode)
+        #iterate over pd_df rows
+        
+       
     
-def split_data_into_batches(mpc_buffer_data):
-    #add mpc_buffer_data shuffling random.shuffle() should do the job
-    #open mpc_buffer_data folder and handle it so that it's a list of data points
-    batched_data = []
-    for data_iterator in range(len(mpc_buffer_data)):
-        batch = []
-        batch_size_controller = 0
-        while batch_size_controller < BATCH_SIZE:
-            batch.append(mpc_buffer_data[data_iterator])
-            batch_size_controller+=1
-        batched_data.append(batch)
-    if len(batched_data[-1])<BATCH_SIZE:
-        batched_data = batched_data[:-1] #removing the last batch if the number of datapoints isn't divisible by BATCH_SIZE
+def split_data_into_batches(mpc_data_dir='../data/experiments/'):
+    #prepare list for data filenames
+    episode_csvs = []
+    #recursively explore the directory containing mpc data
+    for filename in glob.iglob(mpc_data_dir+'**/*.csv', recursive=True):
+        episode_csvs.append(filename)
+    #shuffle the data before batching
+    random.shuffle(episode_csvs)
+    
+    # this batching discards some data if len(episode_csvs)%BATCH_SIZE != 0
+    # im proud of my single line batching with this list comprehension B)
+    batched_data = [episode_csvs[i*BATCH_SIZE:(i+1)*BATCH_SIZE] for i in range(len(episode_csvs)//BATCH_SIZE)]
+#     batched_data = []
+#     for data_iterator in range(len(episode_csvs)):
+#         batch = []
+#         batch_size_controller = 0
+#         while batch_size_controller < BATCH_SIZE:
+#             batch.append(episode_csvs[data_iterator])
+#             batch_size_controller+=1
+#         batched_data.append(batch)
+#     if len(batched_data[-1])<BATCH_SIZE:
+#         batched_data = batched_data[:-1] #removing the last batch if the number of datapoints isn't divisible by BATCH_SIZE
         
     return batched_data
 
