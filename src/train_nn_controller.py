@@ -19,8 +19,8 @@ import torch
 #Configs
 #TODO Add dynamically generated foldername based on config settings and date.
 from config import DATA_PATH, STORE_DATA, FRAMERATE, TENSORBOARD_DATA, ALPHA, \
-    DATE, SENSORS, VEHICLE, CARLA_IP, LEARNING_RATE, NUMBER_OF_EPOCHS, BATCH_SIZE, RANDOM_SEED, EXP_BUFFER
-
+    DATE, SENSORS, VEHICLE, CARLA_IP, LEARNING_RATE, NUMBR_OF_EPOCHS, BATCH_SIZE, RANDOM_SEED, EXP_BUFFER
+.
 from utils import save_episode_info, tensorboard_log, visdom_log, visdom_initialize_windows, configure_simulation
 
 
@@ -195,39 +195,7 @@ def run_learning_session(args):
     """
 
 def extract_batch_data(filenames_batch):
-        
-    states = []
-    actions = []
-    rewards = []
-    not_done_idx = []
-    last_states = []
-    for idx, exp in enumerate(batch):
-        # unpack states, actions, and rewards into separate lists
-        states.append(np.array(exp.state, copy=False))
-        actions.append(int(exp.action))
-        rewards.append(exp.reward)
-        if exp.last_state is not None:
-            # if the episode has not yet ended, save the index and state prime of the transition
-            not_done_idx.append(idx)
-            last_states.append(np.array(exp.last_state, copy=False))
-    states_v = torch.FloatTensor(states).to(device)
-    actions_t = torch.LongTensor(actions).to(device)
-
-    # handle rewards
-    rewards_np = np.array(rewards, dtype=np.float32)
-    # if at least one transition was non-terminal
-    if not_done_idx:
-        last_states_v = torch.FloatTensor(last_states).to(device)
-        # calculate the values of all the state primes from the net
-        last_vals_v = net(last_states_v)[1]
-        last_vals_np = last_vals_v.data.cpu().numpy()[:, 0]
-        # apply the Bellman equation adding GAMMA * V(s') to the reward for all non-terminal states
-        # terminal states will contain just the reward received
-        rewards_np[not_done_idx] += last_val_gamma * last_vals_np
-
-    # these are the Q(s,a) values we will use to calculate the advantage and value loss
-    q_vals_v = torch.FloatTensor(rewards_np).to(device)
-    return states_v, actions_t, q_vals_v
+    #might not be necessary since utils like this were implemented by Ksawery already
 
     states = []
     steering = []

@@ -27,6 +27,11 @@
 # Inne
 
 - Jak zaprojektować funkcję celu?
+Potencjalne problemy z f. celu:
+    1. Agent nie uczy się, że warto wciskać gaz bo nie widzi różnicy z wrzuceniem luzu
+    2. Agent uczy się przyspieszać i zwalniać, aby nadużywać składnika nagrody będącego iloczynem prędkości poprzedniej i aktualnej zamiast jedynie przyspieszać
+    3. Coś było z zakrętami
+
 - Jak wpiąć MPC aby była mierzalna za pomocą funkcji celu.
 - Które algorytmy obsługują continous action space.
 
