@@ -9,7 +9,7 @@ import random
 import visdom as vis
 
 from environment import Agent, Environment
-from spawn import df_to_spawn_points, numpy_to_transform, set_spectator_above_actor
+from spawn import df_to_spawn_points, numpy_to_transform, set_spectator_above_actor, configure_simulation
 from control.nn_control import NnA2CController
 from control.abstract_control import Controller
 from tensorboardX import SummaryWriter
@@ -18,10 +18,10 @@ import torch
 
 #Configs
 #TODO Add dynamically generated foldername based on config settings and date.
-from config import DATA_PATH, STORE_DATA, FRAMERATE, TENSORBOARD_DATA, ALPHA, \
-    DATE, SENSORS, VEHICLE, CARLA_IP, LEARNING_RATE, NUMBR_OF_EPOCHS, BATCH_SIZE, RANDOM_SEED, EXP_BUFFER
+from config import DATA_PATH, STORE_DATA, FRAMERATE, TENSORBOARD_DATA, GAMMA, \
+    DATE_TIME, SENSORS, VEHICLE, CARLA_IP, LEARNING_RATE, NUMBR_OF_EPOCHS, BATCH_SIZE, RANDOM_SEED, EXP_BUFFER
 .
-from utils import save_episode_info, tensorboard_log, visdom_log, visdom_initialize_windows, configure_simulation
+from utils import save_episode_info, tensorboard_log, visdom_log, visdom_initialize_windows
 
 
 def main():
@@ -113,7 +113,7 @@ def run_learning_session(args):
     args.port = 2000
     # Initialize tensorboard -> initialize writer inside run episode so that every
     if args.tensorboard:
-        writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_TS{TARGET_SPEED}_H{STEPS_AHEAD}_FRAMES{args.frames}_{DATE}',
+        writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_TS{TARGET_SPEED}_H{STEPS_AHEAD}_FRAMES{args.frames}_{DATE_TIME}',
                                flush_secs=5, max_queue=5)
     elif args.tensorboard:
         writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_FRAMES{args.frames}', flush_secs=5)
@@ -282,7 +282,7 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
     world.tick()
     time.sleep(1)# x4? allow controll each 4 frames
 
-    windows = visdom_initialize_windows(viz=viz, title=DATE, sensors=SENSORS, location=agent.location) if args.visdom else None
+    windows = visdom_initialize_windows(viz=viz, title=DATE_TIME, sensors=SENSORS, location=agent.location) if args.visdom else None
 
     for step in range(NUM_STEPS):  #TODO change to while with conditions
         #Retrieve state and actions
@@ -310,12 +310,12 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
 
         #Receive reward
         reward = environment.calc_reward(points_3D=agent.waypoints, state=state, next_state=next_state,
-                                         alpha=ALPHA, step=step)
+                                         gamma=GAMMA, step=step)
         # rewards.append(rewards)
         # print(f'step:{step} data:{len(agent.sensors["depth"]["data"])}')
         #Log
         if args.tensorboard:
-            tensorboard_log(title=DATE, writer=writer, state=state,
+            tensorboard_log(title=DATE_TIME, writer=writer, state=state,
                             action=action, reward=reward, step=step)
         if args.visdom:
             visdom_log(viz=viz, windows=windows, state=state, action=action, reward=reward, step=step)

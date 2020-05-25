@@ -78,8 +78,6 @@ def load_frames(path:str, sensor:str, indexes:list) -> list:
 
     return frames
 
-
-
 def load_batch(states_indexes:list, dataframes:dict):
     '''
     Element of batch is a state which goes to the preprocessing net method

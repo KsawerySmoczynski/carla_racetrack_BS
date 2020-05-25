@@ -8,17 +8,17 @@ import carla
 import visdom as vis
 
 from environment import Agent, Environment
-from spawn import df_to_spawn_points, numpy_to_transform, set_spectator_above_actor
+from spawn import df_to_spawn_points, numpy_to_transform, set_spectator_above_actor, configure_simulation
 from control.mpc_control import MPCController
 from control.abstract_control import Controller
 from tensorboardX import SummaryWriter
 
 #Configs
-from config import DATA_PATH, STORE_DATA, FRAMERATE, TENSORBOARD_DATA, ALPHA, \
-    DATE, SENSORS, VEHICLE, CARLA_IP, MAP, INVERSE, NO_AGENTS
+from config import DATA_PATH, FRAMERATE, TENSORBOARD_DATA, GAMMA, \
+    DATE_TIME, SENSORS, VEHICLE, CARLA_IP, MAP, INVERSE, NO_AGENTS, NEGATIVE_REWARD
 
-from utils import tensorboard_log, visdom_log, visdom_initialize_windows, init_reporting, save_info, \
-    configure_simulation
+from utils import tensorboard_log, visdom_log, visdom_initialize_windows, init_reporting, save_info, update_Qvals
+
 
 #Use this script only for data generation
 
@@ -75,6 +75,27 @@ def main():
         default='MPC',
         help='Avialable controllers: "MPC", "NN", Default: "MPC"')
 
+    argparser.add_argument(
+        '--speed',
+        default=90,
+        type=int,
+        dest='speed',
+        help='Target speed for mpc')
+
+    argparser.add_argument(
+        '--steps_ahead',
+        default=10,
+        type=int,
+        dest='steps_ahead',
+        help='steps 2calculate ahead for mpc')
+
+    argparser.add_argument(
+        '--no_agents',
+        default=NO_AGENTS,
+        type=int,
+        dest='no_agents',
+        help='no of spawned agents')
+
     # Logging configs
     argparser.add_argument(
         '--tensorboard',
@@ -91,16 +112,16 @@ def main():
 
 def run_client(args):
     # args = main()
-    #args.host = 'localhost'
-    #args.port = 2000
+    args.host = 'localhost'
+    args.port = 2000
 
     args.tensorboard = False
     writer = None
     if args.controller == 'MPC':
-        TARGET_SPEED = 90
-        STEPS_AHEAD = 10
+        TARGET_SPEED = args.speed
+        STEPS_AHEAD = args.steps_ahead
         if args.tensorboard:
-            writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_TS{TARGET_SPEED}_H{STEPS_AHEAD}_FRAMES{args.frames}_{DATE}',
+            writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_TS{TARGET_SPEED}_H{STEPS_AHEAD}_FRAMES{args.frames}_{DATE_TIME}',
                                    flush_secs=5, max_queue=5)
     elif args.tensorboard:
         writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_FRAMES{args.frames}', flush_secs=5)
@@ -115,7 +136,7 @@ def run_client(args):
 
     # Controller initialization - we initialize one controller for n-agents, what happens in multiprocessing.
     if args.controller is 'MPC':
-        controller = MPCController(target_speed=TARGET_SPEED, steps_ahead=STEPS_AHEAD, dt=0.05)
+        controller = MPCController(target_speed=TARGET_SPEED, steps_ahead=STEPS_AHEAD, dt=0.1)
 
     status, actor_dict, env_dict, sensor_data = run_episode(client=client,
                                                             controller=controller,
@@ -149,7 +170,7 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
     world = environment.reset_env(args)
     agent_config = {'world':world, 'controller':controller, 'vehicle':args.vehicle,
                     'sensors':SENSORS, 'spawn_points':spawn_points}
-    environment.init_agents(no_agents=NO_AGENTS, agent_config=agent_config)
+    environment.init_agents(no_agents=args.no_agents, agent_config=agent_config)
     environment.init_vehicles()
     spectator = world.get_spectator()
     spectator.set_transform(numpy_to_transform(
@@ -164,7 +185,7 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
     world.tick()
     time.sleep(1)
     environment.initialize_agents_reporting(sensors=SENSORS)
-
+    save_paths = [agent.save_path for agent in environment.agents]
 
     for step in range(NUM_STEPS):  #TODO change to while with conditions
         #Retrieve state and actions
@@ -181,21 +202,31 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
         next_states = [{'velocity': agent.velocity,'location': agent.location} for agent in environment.agents]
 
         rewards = [environment.calc_reward(points_3D=agent.waypoints, state=state, next_state=next_state,
-                                         alpha=ALPHA, step=step) for agent, state, next_state in zip(environment.agents, states, next_states)]
+                                           gamma=GAMMA, step=step) for agent, state, next_state in zip(environment.agents, states, next_states)]
+
+        for idx, (state, agent) in enumerate(zip(states, environment.agents)):
+            if state['distance_2finish'] < 5:
+                print(f'agent {str(agent)} finished the race in {step} steps')
+                save_info(path=agent.save_path, state=state, action=action, reward=0)
+                agent.destroy(data=True)
+                environment.agents.pop(idx)
+
+            if state['collisions'] > 0:
+                print(f'failed, collision {str(agent)}')
+                save_info(path=agent.save_path, state=state, action=action,
+                          reward=reward + NEGATIVE_REWARD * (GAMMA ** step))
+                agent.destroy(data=True)
+                environment.agents.pop(idx)
 
         for agent, state, action, reward in zip(environment.agents, states, actions, rewards):
             save_info(path=agent.save_path, state=state, action=action, reward=reward)
 
-        for idx, (state, agent) in enumerate(zip(states, environment.agents)):
-            if state['distance_2finish'] < 5:
-                agent.destroy(data=True)
-                environment.agents.pop(idx)
-                print(f'agent {idx} finished the race')
         if len(environment.agents) < 1:
             print('fini')
             break
 
-
+    for agent_path in save_paths:
+        update_Qvals(path=agent_path)
 
     status, actor_dict, env_dict, sensor_data = str, dict, dict, list
 

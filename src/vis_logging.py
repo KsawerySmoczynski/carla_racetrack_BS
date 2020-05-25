@@ -8,20 +8,20 @@ import visdom as vis
 from PIL import Image
 from ast import literal_eval
 
-from config import DATE, SENSORS, EXPERIMENTS_PATH, MAP, INVERSE
+from config import DATE_TIME, SENSORS, EXPERIMENTS_PATH, MAP, INVERSE
 
 
 def vis_initialize_windows(visdom:vis.Visdom, sensors:dict):
 
-    windows = {sensor: visdom.image(np.zeros((3, 75, 100)), opts=dict(title=f'{DATE} {sensor} sensor', width=800, height=600)) \
+    windows = {sensor: visdom.image(np.zeros((3, 75, 100)), opts=dict(title=f'{DATE_TIME} {sensor} sensor', width=800, height=600)) \
                for sensor, value in sensors.items() if value & (sensor is not 'collisions')}
 
-    windows['trace'] = visdom.line(X=[0], Y=[0], opts=dict(title=f'{DATE} Actor trace'))
-    windows['reward'] = visdom.line(X=[0], Y=[0], opts=dict(title=f'{DATE} Rewards received'))
-    windows['velocity'] = visdom.line(X=[0], Y=[0], opts=dict(title=f'{DATE} Velocity in kmh'))
-    windows['gas_brake'] = visdom.line(X=[0], Y=[0], opts=dict(title=f'{DATE} Gas and brake'))
-    windows['steer'] = visdom.line(X=[0], Y=[0], opts=dict(title=f'{DATE} Steer angle'))
-    windows['distance_2finish'] = visdom.line(X=[0], Y=[0], opts=dict(title=f'{DATE} Distance 2finish'))
+    windows['trace'] = visdom.line(X=[0], Y=[0], opts=dict(title=f'{DATE_TIME} Actor trace'))
+    windows['reward'] = visdom.line(X=[0], Y=[0], opts=dict(title=f'{DATE_TIME} Rewards received'))
+    windows['velocity'] = visdom.line(X=[0], Y=[0], opts=dict(title=f'{DATE_TIME} Velocity in kmh'))
+    windows['gas_brake'] = visdom.line(X=[0], Y=[0], opts=dict(title=f'{DATE_TIME} Gas and brake'))
+    windows['steer'] = visdom.line(X=[0], Y=[0], opts=dict(title=f'{DATE_TIME} Steer angle'))
+    windows['distance_2finish'] = visdom.line(X=[0], Y=[0], opts=dict(title=f'{DATE_TIME} Distance 2finish'))
 
     return windows
 

@@ -7,7 +7,7 @@ import torch
 import torch.multiprocessing as mp
 
 #Local imports
-from config import IMAGE_DOWNSIZE_FACTOR, FRAMERATE, DATA_PATH, DATE, SENSORS, INVERSE, EXPERIMENT
+from config import IMAGE_DOWNSIZE_FACTOR, FRAMERATE, DATA_PATH, DATE_TIME, SENSORS, INVERSE
 from control.abstract_control import Controller
 from spawn import sensors_config, numpy_to_transform, velocity_to_kmh, transform_to_numpy, location_to_numpy, \
     to_vehicle_control
@@ -49,7 +49,7 @@ class Agent:
 
     @property
     def save_path(self) -> str:
-        return f'{DATA_PATH}/experiments/{self.map}{"_inverse"*INVERSE}/{DATE}/{EXPERIMENT}/{self.__str__()}'
+        return f'{DATA_PATH}/experiments/{self.map}{"_inverse"*INVERSE}/{DATE_TIME}/{self.__str__()}'
 
     @property
     def transform(self):
@@ -157,7 +157,6 @@ class Agent:
             indexes = [idx for idx in range(step-self.no_data_points, step)]
         return indexes
 
-
     def set_waypoints(self, spawn_points:np.array, spawn_point_idx:int):
         '''
         For explicit selection of spawn point and waypoints of agent
@@ -171,7 +170,6 @@ class Agent:
             [spawn_points[self.spawn_point_idx:, :],
              spawn_points[:self.spawn_point_idx, :]]
         )[:,:3]  # delete yaw column
-
 
     def initialize_vehicle(self) -> None:
         '''
@@ -244,6 +242,8 @@ class Agent:
                 save_img(img=self.sensors[sensor]['data'][-1], path=f'{self.save_path}/sensors/{file}')
                 if step > self.no_data_points:
                     self.sensors[sensor]['data'].pop(0)
+                    #For future buffer change save to bulk save of all data from sensors till [-self.data_points:]
+                    # self.sensors[sensor]['data'].pop(0)
 
     def destroy(self, data:bool=False) -> None:
         '''
@@ -411,23 +411,23 @@ class Environment:
         settings.fixed_delta_seconds = abs(float(settings.fixed_delta_seconds or 0) - 1/frames)
         self.world.apply_settings(settings)
 
-    def calc_reward(self, points_3D:np.array, state:dict, next_state, alpha: float = .995, punishment:float=0.05, step: int = 0) -> float:
+    def calc_reward(self, points_3D:np.array, state:dict, next_state, gamma: float = .995, punishment:float=0.05, step: int = 0) -> float:
         '''
         Calculating reward based on location and speed between 2 consecutive states.
 
         :param points_3D:np.array, points
         :param state:
         :param next_state:dict, simple dict containing only velocity and location from resulting state
-        :param alpha:float, discount factor
+        :param gamma:float, discount factor
         :param step:int
         :return: reward:float,
         '''
 
         if calc_distance(actor_location=next_state['location'], points_3D=points_3D) >= calc_distance(
                 actor_location=state['location'], points_3D=points_3D):
-            return -(next_state['velocity'] / (state['velocity'] + 1)) * (alpha ** step) - punishment
+            return -(next_state['velocity'] / (state['velocity'] + 1)) * (gamma ** step) - punishment
 
         #TODO punishment = step * punishment -> very small value for punishment grows with time
         # return (next_state['velocity']/(state['velocity'] + 1)) * \
-        #        ((tracklen - calc_from_closest_distance) - distance_travelled )  * (alpha**step)
-        return (next_state['velocity'] / (state['velocity'] + 1)) * (alpha ** step) - punishment
+        #        ((tracklen - calc_from_closest_distance) - distance_travelled )  * (gamma**step)
+        return (next_state['velocity'] / (state['velocity'] + 1)) * (gamma ** step) - punishment

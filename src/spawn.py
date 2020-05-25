@@ -1,3 +1,5 @@
+import math
+
 import carla
 import numpy as np
 import pandas as pd
@@ -49,6 +51,24 @@ def calc_azimuth(pointA:tuple, pointB:tuple) -> float:
 
     return alpha
 
+def to_vehicle_control_discreet(gas_brake:float, steer:float) -> carla.VehicleControl:
+    #TODO think about it
+    '''
+    Discreet
+    :param gas_brake:float in range <-1,1>
+    :param steer:float in range <-1,1>
+    :return: carla.VehicleControl
+    '''
+    sign = lambda x: math.copysign(0.4, x)
+
+    if abs(steer) > 0.2:
+        return carla.VehicleControl(throttle = 0.2, steer=sign(steer), reverse=False)
+    elif gas_brake < 0.:
+        return carla.VehicleControl(throttle=0, steer=0, reverse=False)
+    else:
+        return carla.VehicleControl(throttle=1, steer=0, reverse=False)
+
+
 def to_vehicle_control(gas_brake:float, steer:float) -> carla.VehicleControl:
     #TODO think about it
     '''
@@ -57,7 +77,7 @@ def to_vehicle_control(gas_brake:float, steer:float) -> carla.VehicleControl:
     :param steer:float in range <-1,1>
     :return: carla.VehicleControl
     '''
-    #TODO -> podziel na 4 obszary i przeskaluj dynamikę
+
     if gas_brake > 0.5:
         return carla.VehicleControl(throttle = 2*gas_brake-1, steer=steer, reverse=False)
     elif (gas_brake < 0.5) & (gas_brake > 0.) :
@@ -67,6 +87,7 @@ def to_vehicle_control(gas_brake:float, steer:float) -> carla.VehicleControl:
     else:
         return carla.VehicleControl(throttle=-2*gas_brake-1, steer=-steer, reverse=True)
 
+
 def set_spectator_above_actor(spectator:carla.Actor, transform:np.array) -> None:
     '''
     Changes position of the spectator relative to actor position.
@@ -74,13 +95,13 @@ def set_spectator_above_actor(spectator:carla.Actor, transform:np.array) -> None
     :param transform:
     :return:
     '''
-    transform = numpy_to_transform(transform + [0, 0, 15, 0])
+    transform = numpy_to_transform(transform + [0, 0, 10, 0])
     transform.rotation.pitch = -15
     spectator.set_transform(transform)
 
 
 def sensors_config(blueprint_library:carla.BlueprintLibrary,
-                   depth:bool=True, rgb:bool=False, collision:bool=True,) -> dict:
+                   depth:bool=True, rgb:bool=False, collisions:bool=True,) -> dict:
     '''
     Configures sensors blueprints, relative localization and transformations related to sensor.
     :param blueprint_library:carla.BlueprintLibrary
@@ -106,7 +127,7 @@ def sensors_config(blueprint_library:carla.BlueprintLibrary,
             'transform': rgb_relative_transform,
                                     }
 
-    if collision:
+    if collisions:
         collision_bp = blueprint_library.find('sensor.other.collision')
         collision_relative_transform = carla.Transform(carla.Location(0, 0, 0), carla.Rotation(0, 0, 0))
         sensors['collisions'] = {
@@ -115,3 +136,15 @@ def sensors_config(blueprint_library:carla.BlueprintLibrary,
                                 }
 
     return sensors
+
+
+def configure_simulation(args) -> carla.Client:
+    '''
+    Function for client and connection creation.
+    :param args:
+    :return: carla.Client, client object connected to the carla Simulator
+    '''
+    client = carla.Client(args.host, args.port)
+    client.set_timeout(5.0)  # seconds
+
+    return client

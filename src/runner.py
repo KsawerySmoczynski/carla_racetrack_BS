@@ -9,18 +9,17 @@ import carla
 import visdom as vis
 
 from environment import Agent, Environment
-from spawn import df_to_spawn_points, numpy_to_transform, set_spectator_above_actor
+from spawn import df_to_spawn_points, numpy_to_transform, set_spectator_above_actor, configure_simulation
 from control.mpc_control import MPCController
 from control.abstract_control import Controller
 from tensorboardX import SummaryWriter
 
 #Configs
 #TODO Add dynamically generated foldername based on config settings and date.
-from config import DATA_PATH, FRAMERATE, TENSORBOARD_DATA, ALPHA, \
-    DATE, SENSORS, VEHICLE, CARLA_IP, MAP
+from config import DATA_PATH, FRAMERATE, TENSORBOARD_DATA, GAMMA, \
+    DATE_TIME, SENSORS, VEHICLE, CARLA_IP, MAP, NEGATIVE_REWARD
 
-from utils import tensorboard_log, visdom_log, init_reporting, save_info, \
-    configure_simulation
+from utils import tensorboard_log, visdom_log, init_reporting, save_info, update_Qvals
 
 
 def main():
@@ -76,6 +75,20 @@ def main():
         default='MPC',
         help='Avialable controllers: "MPC", "NN", Default: "MPC"')
 
+    argparser.add_argument(
+        '--speed',
+        default=90,
+        type=int,
+        dest='speed',
+        help='Target speed for mpc')
+
+    argparser.add_argument(
+        '--steps_ahead',
+        default=10,
+        type=int,
+        dest='steps_ahead',
+        help='steps 2calculate ahead for mpc')
+
     # Logging configs
     argparser.add_argument(
         '--tensorboard',
@@ -98,10 +111,10 @@ def run_client(args):
     args.tensorboard = False
     writer = None
     if args.controller == 'MPC':
-        TARGET_SPEED = 90
-        STEPS_AHEAD = 10
+        TARGET_SPEED = args.speed
+        STEPS_AHEAD = args.steps_ahead
         if args.tensorboard:
-            writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_TS{TARGET_SPEED}_H{STEPS_AHEAD}_FRAMES{args.frames}_{DATE}',
+            writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_TS{TARGET_SPEED}_H{STEPS_AHEAD}_FRAMES{args.frames}_{DATE_TIME}',
                                    flush_secs=5, max_queue=5)
     elif args.tensorboard:
         writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_FRAMES{args.frames}', flush_secs=5)
@@ -116,7 +129,7 @@ def run_client(args):
 
     # Controller initialization
     if args.controller is 'MPC':
-        controller = MPCController(target_speed=TARGET_SPEED, steps_ahead=STEPS_AHEAD, dt=0.05)
+        controller = MPCController(target_speed=TARGET_SPEED, steps_ahead=STEPS_AHEAD, dt=0.1)
 
     status, actor_dict, env_dict, sensor_data = run_episode(client=client,
                                                             controller=controller,
@@ -180,10 +193,7 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
         state = agent.get_state(step, retrieve_data=True)
 
         #Check if state is terminal
-        if state['distance_2finish'] < 5:
-            status = 'Succes'
-            print('lap finished')
-            break
+
 
         #Apply action
         action = agent.play_step(state) #TODO split to two functions
@@ -198,7 +208,22 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
 
         #Receive reward
         reward = environment.calc_reward(points_3D=agent.waypoints, state=state, next_state=next_state,
-                                         alpha=ALPHA, step=step)
+                                         gamma=GAMMA, step=step)
+
+        if state['distance_2finish'] < 5:
+            print(f'agent {str(agent)} finished the race in {step} steps')
+            save_info(path=agent.save_path, state=state, action=action, reward=0)
+            update_Qvals(agent.save_path)
+            break
+
+        if state['collisions'] > 0:
+            print(f'failed, collision {str(agent)}')
+            save_info(path=agent.save_path, state=state, action=action,
+                      reward=NEGATIVE_REWARD * (GAMMA ** step))
+            agent.actor.apply_control(carla.VehicleControl(throttle=0, brake=1, hand_brake=True))
+            agent.actor.set_velocity(carla.Vector3D(0., 0., 0.))
+            environment.toggle_world(20)
+            break
 
         save_info(path=agent.save_path, state=state, action=action, reward=reward)
 
@@ -207,6 +232,9 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
         if ((agent.velocity < 20) & (step % 10 == 0)) or (step % 50 == 0):
             set_spectator_above_actor(spectator, agent.transform)
         # time.sleep(0.1)
+
+    #Calc Qvalues and add to reporting file
+    update_Qvals(path=agent.save_path)
 
     status, actor_dict, env_dict, sensor_data = str, dict, dict, list
 
