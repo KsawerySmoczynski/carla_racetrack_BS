@@ -49,7 +49,7 @@ class Agent:
 
     @property
     def save_path(self) -> str:
-        return f'{DATA_PATH}/experiments/{self.map}{"_inverse"*INVERSE}/{DATE}/{EXPERIMENT}/{self.__str__()}'
+        return f'{DATA_PATH}/experiments_discreet/{self.map}{"_inverse"*INVERSE}/{DATE}/{EXPERIMENT}/{self.__str__()}'
 
     @property
     def transform(self):
@@ -157,7 +157,6 @@ class Agent:
             indexes = [idx for idx in range(step-self.no_data_points, step)]
         return indexes
 
-
     def set_waypoints(self, spawn_points:np.array, spawn_point_idx:int):
         '''
         For explicit selection of spawn point and waypoints of agent
@@ -171,7 +170,6 @@ class Agent:
             [spawn_points[self.spawn_point_idx:, :],
              spawn_points[:self.spawn_point_idx, :]]
         )[:,:3]  # delete yaw column
-
 
     def initialize_vehicle(self) -> None:
         '''

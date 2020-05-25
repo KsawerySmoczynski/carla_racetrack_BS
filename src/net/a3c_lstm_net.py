@@ -6,21 +6,32 @@ import torch.nn.functional as F
 from net.utils import norm_col_init, weights_init
 
 # https://github.com/dgriff777/rl_a3c_pytorch/blob/master/model.py
+# torch.nn only supports mini-batches The entire torch.nn package only supports inputs that are a mini-batch of samples, and not a single sample.
+# For example, nn.Conv2d will take in a 4D Tensor of nSamples x nChannels x Height x Width.
+# If you have a single sample, just use input.unsqueeze(0) to add a fake batch dimension.
+
 
 class A3C_LSTM(torch.nn.Module):
-    def __init__(self, n_img_inputs, n_numeric_imputs, rgb:bool=False):
+    def __init__(self, depth_shape, numeric_shape, rgb_shape:bool=None, rgb:bool=False):
+        '''
+
+        :param depth_shape:
+        :param rgb_shape:
+        :param n_numeric_inputs:
+        :param rgb:
+        '''
         #Num inputs to szerokość
         super(A3C_LSTM, self).__init__()
         self.rgb = rgb
-        self.conv_depth = nn.Conv2d(n_img_inputs, 64, 5, stride=1, padding=2)
+        self.conv_depth = nn.Conv2d(depth_shape[0], 64, 5, stride=1, padding=2)
         self.conv_depth2 = nn.Conv2d(64, 32, 3, stride=1, padding=1)
         if self.rgb:
-            self.conv_rgb = nn.Conv2d(n_img_inputs, 64, 5, stride=1, padding=2)
+            self.conv_rgb = nn.Conv2d(rgb_shape[0], 64, 5, stride=1, padding=2)
             self.conv_rgb2 = nn.Conv2d(64, 32, 3, stride=1, padding=1)
         self.maxp1 = nn.MaxPool2d(2, 2)
         self.maxp2 = nn.MaxPool2d(2, 2)
 
-        self.fc = nn.Linear(n_numeric_imputs, 64)
+        self.fc = nn.Linear(numeric_shape[0], 64)
 
         if self.rgb:
             self.lstm = nn.LSTMCell(512, 256)

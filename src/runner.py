@@ -9,7 +9,7 @@ import carla
 import visdom as vis
 
 from environment import Agent, Environment
-from spawn import df_to_spawn_points, numpy_to_transform, set_spectator_above_actor
+from spawn import df_to_spawn_points, numpy_to_transform, set_spectator_above_actor, configure_simulation
 from control.mpc_control import MPCController
 from control.abstract_control import Controller
 from tensorboardX import SummaryWriter
@@ -19,8 +19,7 @@ from tensorboardX import SummaryWriter
 from config import DATA_PATH, FRAMERATE, TENSORBOARD_DATA, ALPHA, \
     DATE, SENSORS, VEHICLE, CARLA_IP, MAP
 
-from utils import tensorboard_log, visdom_log, init_reporting, save_info, \
-    configure_simulation
+from utils import tensorboard_log, visdom_log, init_reporting, save_info
 
 
 def main():
@@ -183,6 +182,11 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
         if state['distance_2finish'] < 5:
             status = 'Succes'
             print('lap finished')
+            break
+
+        if state['collisions'] > 0:
+            status = 'failed'
+            print('Collision!')
             break
 
         #Apply action

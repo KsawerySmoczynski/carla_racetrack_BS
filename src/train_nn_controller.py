@@ -9,7 +9,7 @@ import random
 import visdom as vis
 
 from environment import Agent, Environment
-from spawn import df_to_spawn_points, numpy_to_transform, set_spectator_above_actor
+from spawn import df_to_spawn_points, numpy_to_transform, set_spectator_above_actor, configure_simulation
 from control.nn_control import NnA2CController
 from control.abstract_control import Controller
 from tensorboardX import SummaryWriter
@@ -21,7 +21,7 @@ import torch
 from config import DATA_PATH, STORE_DATA, FRAMERATE, TENSORBOARD_DATA, ALPHA, \
     DATE, SENSORS, VEHICLE, CARLA_IP, LEARNING_RATE, NUMBR_OF_EPOCHS, BATCH_SIZE, RANDOM_SEED, EXP_BUFFER
 .
-from utils import save_episode_info, tensorboard_log, visdom_log, visdom_initialize_windows, configure_simulation
+from utils import save_episode_info, tensorboard_log, visdom_log, visdom_initialize_windows
 
 
 def main():

@@ -8,7 +8,7 @@ import carla
 import visdom as vis
 
 from environment import Agent, Environment
-from spawn import df_to_spawn_points, numpy_to_transform, set_spectator_above_actor
+from spawn import df_to_spawn_points, numpy_to_transform, set_spectator_above_actor, configure_simulation
 from control.mpc_control import MPCController
 from control.abstract_control import Controller
 from tensorboardX import SummaryWriter
@@ -17,8 +17,8 @@ from tensorboardX import SummaryWriter
 from config import DATA_PATH, STORE_DATA, FRAMERATE, TENSORBOARD_DATA, ALPHA, \
     DATE, SENSORS, VEHICLE, CARLA_IP, MAP, INVERSE, NO_AGENTS
 
-from utils import tensorboard_log, visdom_log, visdom_initialize_windows, init_reporting, save_info, \
-    configure_simulation
+from utils import tensorboard_log, visdom_log, visdom_initialize_windows, init_reporting, save_info
+
 
 #Use this script only for data generation
 

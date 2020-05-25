@@ -1,7 +1,6 @@
 import os
 
 from PIL import Image
-import json
 import numpy as np
 import pandas as pd
 import carla
@@ -9,7 +8,7 @@ import visdom
 from tensorboardX import SummaryWriter
 
 from config import IMAGE_DOWNSIZE_FACTOR, DATE
-from spawn import location_to_numpy, calc_azimuth, velocity_to_kmh
+from spawn import location_to_numpy, calc_azimuth
 
 to_array = lambda img: np.asarray(img.raw_data, dtype=np.int8).reshape(img.height, img.width, 4)  # 4 because image is in BRGB format
 to_rgb_resized = lambda img: img[..., :3][::IMAGE_DOWNSIZE_FACTOR, ::IMAGE_DOWNSIZE_FACTOR, ::-1]  # making it RGB from BRGB with [...,:3][...,::-1]
@@ -35,10 +34,9 @@ def calc_distance(actor_location:np.array, points_3D:np.array, cut:float=0.02) -
     :param points_3D: np.array, shape = (n-points, ndimensions)
     :param cut: int, how big percentage of whole racetrack length is being skipped in calculating distance to finish,
                         values higher than 0.025 aren't recommended
-    :return: float - distance to the last point.
+    :return: float - distance to the last point as a fraction of whole track
     '''
 
-    #TODO measure distance as a fraction of whole track length -> universal, track independent
     skipped_points = np.argmin(np.linalg.norm(points_3D-actor_location, axis=1))
     cut_idx = int(points_3D.shape[0] * cut)
     if (skipped_points + cut_idx) < points_3D.shape[0]:
@@ -49,7 +47,7 @@ def calc_distance(actor_location:np.array, points_3D:np.array, cut:float=0.02) -
     points_deltas = np.diff(points_3D[skip:], axis=0)
     distance = actor_to_point + np.sqrt((points_deltas**2).sum(axis=1)).sum()
 
-    return distance
+    return distance / np.sqrt((np.diff(points_3D, axis=0)**2).sum(axis=1)).sum()
 
 
 def visdom_initialize_windows(viz:visdom.Visdom, title:str, sensors:dict, location):
@@ -180,13 +178,20 @@ def save_info(path:str, state:dict, action:dict, reward:float) -> None:
     pass
 
 
-def configure_simulation(args) -> carla.Client:
+def rgb2gray_array(rgb_array):
     '''
-    Function for client and connection creation.
-    :param args:
-    :return: carla.Client, client object connected to the carla Simulator
+    Converts array of rgb imgs
+    :param rgb_array:
+    :return:
     '''
-    client = carla.Client(args.host, args.port)
-    client.set_timeout(5.0)  # seconds
+    return np.array([rgb2gray(img) for img in rgb_array], dtype=rgb_array.dtype)
 
-    return client
+def rgb2gray(rgb):
+    '''
+    Converts rgb img or array of rgb imgs to
+    :param rgb: np.array shape=(3,w, h)
+    :return: depth: np.array shape=(1, w, h)
+    '''
+    coeffs = np.array([0.2125, 0.7154, 0.0721], dtype=rgb.dtype)
+    return rgb @ coeffs
+

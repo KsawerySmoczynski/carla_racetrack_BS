@@ -15,8 +15,8 @@ class DDPG(torch.nn.Module):
     def __init__(self, depth_shape, numeric_shape, rgb_shape=None, rgb:bool=False):
         '''
 
-        :param depth_shape:
-        :param rgb_shape:
+        :param depth_shape: no channels
+        :param rgb_shape: no channels
         :param n_numeric_inputs:
         :param rgb:
         '''

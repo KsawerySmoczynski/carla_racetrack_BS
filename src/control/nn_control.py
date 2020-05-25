@@ -74,6 +74,7 @@ class NNController(Controller):
             rgb = None
 
         #Add preprocess -> reshaping, normalizing, dimensions reduction
+        # https://stackoverflow.com/questions/12201577/how-can-i-convert-an-rgb-image-into-grayscale-in-python -> 1 layer tensor
         depth = torch.from_numpy(state['depth_data']).to(device=self.device)
 
         numeric = torch.tensor([state['gas_brake'], state['steer'], state['distance_2finish'], state['velocity']],
