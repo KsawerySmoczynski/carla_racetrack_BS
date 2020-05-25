@@ -5,6 +5,7 @@
 LinuxNoEditor
 carla.tar.xz
 nvtop
+data
 *.ubuntu
 
 # Files
