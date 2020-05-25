@@ -19,12 +19,14 @@ import torch
 #Configs
 #TODO Add dynamically generated foldername based on config settings and date.
 from config import DATA_PATH, STORE_DATA, FRAMERATE, TENSORBOARD_DATA, ALPHA, \
-    DATE, SENSORS, VEHICLE, CARLA_IP, LEARNING_RATE, NUMBER_OF_EPOCHS, BATCH_SIZE, RANDOM_SEED, EXP_BUFFER
-
+    DATE, SENSORS, VEHICLE, CARLA_IP, LEARNING_RATE, NUMBR_OF_EPOCHS, BATCH_SIZE, RANDOM_SEED, EXP_BUFFER
+.
 from utils import save_episode_info, tensorboard_log, visdom_log, visdom_initialize_windows, configure_simulation
 
 
 def main():
+    #set a seed for batch shuffling
+    random.seed(RANDOM_SEED)
     #parse args
     #   - GPUS
     #   - CONTROLLER
@@ -168,39 +170,66 @@ def run_learning_session(args):
     """
     TODO
     
+    póki co discreet action space, potem do przerobienia na continuous
+    
     for epoch in epochs:
+        tworzymy zbachowane dane i tasujemy epizody wewnątrz nich
         for batch in batches:
-            zbieramy sobie dane z batchu
-            puszczamy dane z batchu przez sieć (potrzebujemy dodać zwracanie rewardu, można zacząc od prędkości + czasu od rozpoczęcia epizodu?)
-            uzyskujemy sterowańsko i krytykowańsko
+            na początek zerujemy gradient, wyciągamy [stany, akcje, q wartości] z batchu w tensorach
+        
+            wrzucamy stany do sieci, uzyskujemy prwadopodobienstwa akcji i wartości stanów
             
-            i tutaj jest tricky bo trzeba jakoś advantage zrobić i niby to rozumiałem a teraz niebardzo wiem jak się zabrać
-            w wielu rozwiązaniach liczy się entropy z jakiegoś powodu? nwm po co, ale pewnie trzeba tylko nwm dlaczego XD
+            z wczesniejszych q wartości i wartości stanów liczymy mse_loss
             
-            jak już mamy loss całościowy zebrany to robimy cyk .backward() i optimizer.step() czy coś podobnego
+            log_softmax na prawdopodobienstwach akcji
             
-            no i lecimy następny batch
+            liczymy advantage przez roznice q wartosci i wartosci stanow
             
-            i co jakiś czas sobie możemy zapisywać aktualny model i wszystko bangla
+            liczym policy_loss, entropy_loss i robimy dwa backwardy, jeden na policy_loss drugi na entropy_loss i wczesniejsze mse_loss
+            (entropy_loss liczymy żeby zbyt nie karać sieci jak nie jest pewna akcji i daje niskie prawdopodobieństwa)
             
+            step na optimizerze i lecimy dalej
             
-            
+            model zapisujemy co X kroków albo w momencie jak mamy największy reward
     
     """
+
+def extract_batch_data(filenames_batch):
+    #might not be necessary since utils like this were implemented by Ksawery already
+
+    states = []
+    steering = []
+    rewards = []
+    non_terminal_idxs = []
+    terminal_idxs = []
+    for episode in filenames_batch:
+        pd.read_csv(episode)
+        #iterate over pd_df rows
+        
+       
     
-def split_data_into_batches(mpc_buffer_data):
-    #add mpc_buffer_data shuffling random.shuffle() should do the job
-    #open mpc_buffer_data folder and handle it so that it's a list of data points
-    batched_data = []
-    for data_iterator in range(len(mpc_buffer_data)):
-        batch = []
-        batch_size_controller = 0
-        while batch_size_controller < BATCH_SIZE:
-            batch.append(mpc_buffer_data[data_iterator])
-            batch_size_controller+=1
-        batched_data.append(batch)
-    if len(batched_data[-1])<BATCH_SIZE:
-        batched_data = batched_data[:-1] #removing the last batch if the number of datapoints isn't divisible by BATCH_SIZE
+def split_data_into_batches(mpc_data_dir='../data/experiments/'):
+    #prepare list for data filenames
+    episode_csvs = []
+    #recursively explore the directory containing mpc data
+    for filename in glob.iglob(mpc_data_dir+'**/*.csv', recursive=True):
+        episode_csvs.append(filename)
+    #shuffle the data before batching
+    random.shuffle(episode_csvs)
+    
+    # this batching discards some data if len(episode_csvs)%BATCH_SIZE != 0
+    # im proud of my single line batching with this list comprehension B)
+    batched_data = [episode_csvs[i*BATCH_SIZE:(i+1)*BATCH_SIZE] for i in range(len(episode_csvs)//BATCH_SIZE)]
+#     batched_data = []
+#     for data_iterator in range(len(episode_csvs)):
+#         batch = []
+#         batch_size_controller = 0
+#         while batch_size_controller < BATCH_SIZE:
+#             batch.append(episode_csvs[data_iterator])
+#             batch_size_controller+=1
+#         batched_data.append(batch)
+#     if len(batched_data[-1])<BATCH_SIZE:
+#         batched_data = batched_data[:-1] #removing the last batch if the number of datapoints isn't divisible by BATCH_SIZE
         
     return batched_data
 

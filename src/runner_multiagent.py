@@ -91,8 +91,8 @@ def main():
 
 def run_client(args):
     # args = main()
-    args.host = 'localhost'
-    args.port = 2000
+    #args.host = 'localhost'
+    #args.port = 2000
 
     args.tensorboard = False
     writer = None
