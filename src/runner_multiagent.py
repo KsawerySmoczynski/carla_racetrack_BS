@@ -204,9 +204,6 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
         rewards = [environment.calc_reward(points_3D=agent.waypoints, state=state, next_state=next_state,
                                            gamma=GAMMA, step=step) for agent, state, next_state in zip(environment.agents, states, next_states)]
 
-        for agent, state, action, reward in zip(environment.agents, states, actions, rewards):
-            save_info(path=agent.save_path, state=state, action=action, reward=reward)
-
         for idx, (state, agent) in enumerate(zip(states, environment.agents)):
             if state['distance_2finish'] < 5:
                 print(f'agent {str(agent)} finished the race in {step} steps')
@@ -220,6 +217,9 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
                           reward=reward + NEGATIVE_REWARD * (GAMMA ** step))
                 agent.destroy(data=True)
                 environment.agents.pop(idx)
+
+        for agent, state, action, reward in zip(environment.agents, states, actions, rewards):
+            save_info(path=agent.save_path, state=state, action=action, reward=reward)
 
         if len(environment.agents) < 1:
             print('fini')
