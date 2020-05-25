@@ -109,6 +109,7 @@ class DDPGActor(DDPG):
 
         return x, (hx, cx)
 
+
 class DDPGCritic(DDPG):
     def __init__(self, actor_out_shape, depth_shape, numeric_shape, rgb_shape:bool=None, rgb:bool=False):
         super(DDPGCritic, self).__init__(depth_shape, numeric_shape, rgb_shape, rgb)

@@ -7,7 +7,7 @@ import carla
 import visdom
 from tensorboardX import SummaryWriter
 
-from config import IMAGE_DOWNSIZE_FACTOR, DATE
+from config import IMAGE_DOWNSIZE_FACTOR, DATE_TIME, GAMMA
 from spawn import location_to_numpy, calc_azimuth
 
 to_array = lambda img: np.asarray(img.raw_data, dtype=np.int8).reshape(img.height, img.width, 4)  # 4 because image is in BRGB format
@@ -44,10 +44,10 @@ def calc_distance(actor_location:np.array, points_3D:np.array, cut:float=0.02) -
     else:
         skip = skipped_points
     actor_to_point = np.linalg.norm(points_3D[skip] - actor_location)
-    points_deltas = np.diff(points_3D[skip:], axis=0)
-    distance = actor_to_point + np.sqrt((points_deltas**2).sum(axis=1)).sum()
+    points_deltas = np.diff(points_3D, axis=0)
+    distance = actor_to_point + np.sqrt((points_deltas[skip-1:]**2).sum(axis=1)).sum()
 
-    return distance / np.sqrt((np.diff(points_3D, axis=0)**2).sum(axis=1)).sum()
+    return (distance / np.sqrt((points_deltas**2).sum(axis=1)).sum()) * 1000
 
 
 def visdom_initialize_windows(viz:visdom.Visdom, title:str, sensors:dict, location):
@@ -122,7 +122,7 @@ def tensorboard_log(title:str, writer:SummaryWriter, state:dict, action:dict, re
     writer.add_scalar(tag=f'{title}/steer', scalar_value=action['steer'], global_step=step)
     writer.add_scalar(tag=f'{title}/velocity', scalar_value=state['velocity'],
                       global_step=step)
-    writer.add_scalar(tag=f'{DATE}/reward', scalar_value=reward, global_step=step)
+    writer.add_scalar(tag=f'{DATE_TIME}/reward', scalar_value=reward, global_step=step)
 
 
 def save_img(img:np.array, path:str, mode:str='RGB') -> None:
@@ -152,8 +152,10 @@ def init_reporting(path:str, sensors:dict) -> None:
         os.makedirs(name='/'.join(path.split('/')), exist_ok=True)
 
     header = 'step'
-    sensors = ','.join([f'{k * v}_indexes' for k,v in sensors.items()])
-    header = f'{header},{sensors}'
+    sensors_header = ','.join([f'{k * v}_indexes' for k,v in sensors.items() if k is not 'collisions'])
+    if 'collisions' in sensors.keys():
+        sensors_header = f'{sensors_header},collisions'
+    header = f'{header},{sensors_header}'
     header = f'{header},velocity,velocity_vec,yaw,location,distance_2finish,steer,gas_brake,reward\n'
 
     with open(f'{path}/episode_info.csv', 'w+') as file:
@@ -175,7 +177,17 @@ def save_info(path:str, state:dict, action:dict, reward:float) -> None:
     info = info.to_csv(index=False, header=False)
     with open(f'{path}/episode_info.csv', 'a') as file:
         file.write(info)
-    pass
+
+
+def update_Qvals(path:str) -> None:
+    '''
+    Adds qvalues to the saved dataframes
+    :param path:
+    :return:
+    '''
+    df = pd.read_csv(f'{path}/episode_info.csv')
+    df['q'] = [sum(df['reward'][i:]) for i in range(df.shape[0])]
+    df.to_csv(f'{path}/episode_info.csv', index=False)
 
 
 def rgb2gray_array(rgb_array):
@@ -185,6 +197,7 @@ def rgb2gray_array(rgb_array):
     :return:
     '''
     return np.array([rgb2gray(img) for img in rgb_array], dtype=rgb_array.dtype)
+
 
 def rgb2gray(rgb):
     '''

@@ -51,7 +51,7 @@ def calc_azimuth(pointA:tuple, pointB:tuple) -> float:
 
     return alpha
 
-def to_vehicle_control(gas_brake:float, steer:float) -> carla.VehicleControl:
+def to_vehicle_control_discreet(gas_brake:float, steer:float) -> carla.VehicleControl:
     #TODO think about it
     '''
     Discreet
@@ -59,7 +59,6 @@ def to_vehicle_control(gas_brake:float, steer:float) -> carla.VehicleControl:
     :param steer:float in range <-1,1>
     :return: carla.VehicleControl
     '''
-    #TODO -> podziel na 4 obszary i przeskaluj dynamikę
     sign = lambda x: math.copysign(0.4, x)
 
     if abs(steer) > 0.2:
@@ -70,7 +69,7 @@ def to_vehicle_control(gas_brake:float, steer:float) -> carla.VehicleControl:
         return carla.VehicleControl(throttle=1, steer=0, reverse=False)
 
 
-def to_vehicle_control_cont(gas_brake:float, steer:float) -> carla.VehicleControl:
+def to_vehicle_control(gas_brake:float, steer:float) -> carla.VehicleControl:
     #TODO think about it
     '''
     Modelling inputs from controller to actuator values.
@@ -78,7 +77,7 @@ def to_vehicle_control_cont(gas_brake:float, steer:float) -> carla.VehicleContro
     :param steer:float in range <-1,1>
     :return: carla.VehicleControl
     '''
-    #TODO -> podziel na 4 obszary i przeskaluj dynamikę
+
     if gas_brake > 0.5:
         return carla.VehicleControl(throttle = 2*gas_brake-1, steer=steer, reverse=False)
     elif (gas_brake < 0.5) & (gas_brake > 0.) :

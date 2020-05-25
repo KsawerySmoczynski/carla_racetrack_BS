@@ -4,8 +4,7 @@ import json
 config_dict = json.load(open('../config.json'))
 
 #General
-EXPERIMENT = 0
-DATE = datetime.datetime.now().strftime("%Y%m%d")
+DATE_TIME = datetime.datetime.now().strftime("%Y%m%d_%H%M")
 
 #Storage config
 STORE_DATA = True
@@ -18,7 +17,8 @@ CARLA_IP = config_dict['carla_ip']
 FRAMERATE = 30
 MAP = 'circut_spa'
 INVERSE = False
-VEHICLE = 'vehicle.audi.tt'
+
+VEHICLE = 'vehicle.dodge_charger.police'
 
 #Controller config
 IMAGE_DOWNSIZE_FACTOR = 10
@@ -32,9 +32,10 @@ SENSORS = {
 }
 
 # RL config
-FEATURES_FOR_BATCH = ['step','collisions','velocity','steer','gas_brake','reward']
+NEGATIVE_REWARD = -100
+FEATURES_FOR_BATCH = ['step','collisions','velocity','steer','gas_brake','reward', 'q']
 NO_AGENTS = 2
-ALPHA = .999
+GAMMA = .9995
 LEARNING_RATE = 0.001
 NUMBER_OF_EPOCHS = 100
 BATCH_SIZE = 20
