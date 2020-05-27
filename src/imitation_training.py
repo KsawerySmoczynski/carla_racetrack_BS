@@ -41,7 +41,7 @@ def main(args):
 
     #Get train test paths -> later on implement cross val
     steps = get_paths(as_tuples=True, shuffle=True)
-    steps_train, steps_test = steps[:int(len(steps)*.8)][:20000], steps[int(len(steps)*.8):]
+    steps_train, steps_test = steps[:int(len(steps)*.8)], steps[int(len(steps)*.8):]
 
     dataset_train = SimpleDataset(steps_train, batch_size=batch_size, transform=transforms.Compose([DepthPreprocess(), ToSupervised()]))
     dataset_test = SimpleDataset(steps_test, batch_size=batch_size, transform=transforms.Compose([DepthPreprocess(), ToSupervised()]))
@@ -53,56 +53,62 @@ def main(args):
 
     #Nets
     actor_net = DDPGActor(depth_shape=[1, 60, 320], numeric_shape=[len(NUMERIC_FEATURES)], output_shape=[2])
-    # critic_net = DDPGCritic(actor_out_shape=[2, ], depth_shape=[1, 60, 320], numeric_shape=[len(NUMERIC_FEATURES)])
+    critic_net = DDPGCritic(actor_out_shape=[2, ], depth_shape=[1, 60, 320], numeric_shape=[len(NUMERIC_FEATURES)])
 
     #Optimizers
     actor_optimizer = torch.optim.Adam(actor_net.parameters(), lr=0.001)
-    # critic_optimizer = torch.optim.Adam(critic_net.parameters(), lr=0.001)
+    critic_optimizer = torch.optim.Adam(critic_net.parameters(), lr=0.001)
 
     #Loss function
     loss_function = torch.nn.MSELoss(reduction='sum')
 
+    dataset_test = iter(dataset_test) #TODO delete, only for debugging
     for epoch_idx in range(no_epochs):
-        actor_running_loss = .0
-        # critic_running_loss = .0
+        # actor_running_loss = .0
+        critic_running_loss = .0
         for idx, batch in enumerate(iter(dataset_train)):
             input, action, q = unpack_supervised_batch(batch=batch, device=device)
 
             actor_optimizer.zero_grad()
-            # critic_optimizer.zero_grad()
+            critic_optimizer.zero_grad()
 
             actor_pred = actor_net(input)
-            # critic_pred = critic_net((action, *input))
+            critic_pred = critic_net((action, *input))
 
             actor_loss = loss_function(actor_pred, action)
-            # critic_loss = loss_function(critic_pred.view(-1), q)
+            critic_loss = loss_function(critic_pred.view(-1), q)
 
             actor_loss.backward()
-            # critic_loss.backward()
+            critic_loss.backward()
 
             actor_optimizer.step()
-            # critic_optimizer.step()
+            critic_optimizer.step()
 
             actor_running_loss += actor_loss.item()
-            # critic_running_loss += critic_loss.item()
+            critic_running_loss += critic_loss.item()
 
-            if idx % 10 == 0:  # print every 2000 mini-batches
-                print(f'Actor Epoch: {epoch_idx + 1}, Batch: {idx+1}, Loss: {actor_running_loss/10}')
-                # print(f'Critic Epoch: {epoch_idx + 1}, Batch: {idx+1}, Loss: {critic_running_loss/10}')
+            if idx % 50 == 0:
+                print(f'Actor Epoch: {epoch_idx + 1}, Batch: {idx+1}, Loss: {actor_running_loss/50}')
+                print(f'Critic Epoch: {epoch_idx + 1}, Batch: {idx+1}, Loss: {critic_running_loss/50}')
                 actor_running_loss = 0.0
-                # critic_running_loss = 0.0
+                critic_running_loss = 0.0
 
-        test_loss = .0
+        actor_test_loss = .0
+        critic_test_loss = .0
         with torch.no_grad():
-            for idx, batch in enumerate(iter(dataset_test)):
+            for idx, batch in enumerate(dataset_test):
                 if idx > 200:
                     break
                 input, action, q = unpack_supervised_batch(batch=batch, device=device)
                 actor_pred = actor_net(input)
+                critic_pred = critic_net((action, *input))
                 actor_loss = loss_function(actor_pred, action)
-                test_loss += actor_loss.item()
+                actor_test_loss += actor_loss.item()
+                critic_loss = loss_function(critic_pred.view(-1), q)
+                critic_test_loss += critic_loss.item()
 
-        print(f'Test loss {(test_loss/200):.3f}')
+        print(f'Actor test loss {(actor_test_loss/200):.3f}')
+        print(f'Critic test loss {(critic_test_loss/200):.3f}')
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser()
