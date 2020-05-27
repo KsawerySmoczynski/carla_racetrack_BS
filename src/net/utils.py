@@ -9,18 +9,17 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 
-from config import SENSORS, FEATURES_FOR_BATCH
+from config import SENSORS, FEATURES_FOR_BATCH, DEVICE
 from utils import rgb2gray_array
 
 to_list = lambda x: ast.literal_eval(x)
-paths_to_tuples = lambda paths: [(path, step) for path, steps in paths.items() for step in range(steps)]
 
 def norm_col_init(weights, std=1.0):
     x = torch.randn(weights.size())
     x *= std / torch.sqrt((x**2).sum(1, keepdim=True))
     return x
 
-def weights_init(m):
+def weights_init(m, cuda:bool = True):
     classname = m.__class__.__name__
     if classname.find('Conv') != -1:
         weight_shape = list(m.weight.data.size())
@@ -37,7 +36,7 @@ def weights_init(m):
         m.weight.data.uniform_(-w_bound, w_bound)
         m.bias.data.fill_(0)
 
-def get_paths(path:str='../data/experiments', sensors:dict=SENSORS, dfs:bool = False) -> (dict, list):
+def get_paths(path:str='../data/experiments', sensors:dict=SENSORS, as_tuples:bool=False, shuffle:bool=False) -> dict:
     '''
     Method to
     :param path:
@@ -46,10 +45,14 @@ def get_paths(path:str='../data/experiments', sensors:dict=SENSORS, dfs:bool = F
     '''
     sensors_config = '_'.join([sensor*value for sensor, value in sensors.items()])
     paths = [f'{root}/{dir}' for root, dirs, files in os.walk(path) for dir in dirs if sensors_config in dir]
-    max_draw = {path:max([int(frame.split('_')[-1][:-4]) for frame in os.listdir(f'{path}/sensors')]) for path in paths}
-    dataframes = {path: pd.read_csv(f'{path}/episode_info.csv') for path in max_draw.keys() for path in paths} if dfs else None
+    paths = {path:max([int(frame.split('_')[-1][:-4]) for frame in os.listdir(f'{path}/sensors')]) for path in paths}
+    # dataframes = {path: pd.read_csv(f'{path}/episode_info.csv') for path in max_draw.keys() for path in paths} if dfs else None
+    if as_tuples:
+        steps =  [(path, step) for path, steps_q in paths.items() for step in range(steps_q)]
+        if shuffle:
+            steps = [steps[i] for i in np.random.permutation(range(len(steps)))]
 
-    return max_draw, dataframes
+    return steps
 
 def select_batch(paths:dict, states_per_batch:int=32) -> list:
     '''
@@ -101,7 +104,27 @@ def load_batch(states_indexes:list, dataframes:dict):
     return batch
 
 
-class ToSupervised(object):
+def get_n_params(model):
+    pp=0
+    for p in list(model.parameters()):
+        nn=1
+        for s in list(p.size()):
+            nn = nn*s
+        pp += nn
+    return pp
+
+
+def unpack_supervised_batch(batch, device=DEVICE):
+    '''
+
+    :param batch:
+    :param device:
+    :return:
+    '''
+    input, action, q = batch
+    return (input[0].float().to(device), input[1].float().to(device)), action.float().to(device), q.float().to(device)
+
+class OldToSupervised(object):
     def __call__(self, sample):
         inputs = [np.array([sample['data'][data] for data in ['distance_2finish', 'velocity', 'collisions']]), sample['data']['depth']]  # + [[np.Nan]]  # - how to add None
         inputs = tuple(inputs)
@@ -110,6 +133,16 @@ class ToSupervised(object):
         q = sample['data']['q']
 
         return {'inputs': inputs, 'actions': actions, 'q': q}
+
+
+class ToSupervised(object):
+    def __call__(self, sample):
+        input = [np.array([sample['data'][data] for data in ['distance_2finish', 'velocity', 'collisions']]), sample['data']['depth']]  # + [[np.Nan]]  # - how to add None
+        input = tuple(input)
+        action = np.array([sample['data']['steer'], sample['data']['gas_brake']])
+        q = sample['data']['q']
+
+        return (input, action, q)
 
 
 class ToReinforcement(object):
@@ -221,23 +254,60 @@ class BufferedDataset(Dataset):
     def get_batch(self, batch_size=32):
         return self.buffer[np.random.randint(0, len(self), size=(batch_size))]
 
-class Batcher:
-    def __init__(self, minibatch:dict, batch_size:int=32, device:torch.device=torch.device(device='cuda:0'), supervised:bool=False):
-        self.batch_size = batch_size
-        self.objective_fn = self.get_supervised_batch() if supervised else self.get_reinforcement_batch()
 
-    def __iter__(self):
-        while True:
-            batch = ()
-            yield batch
+class BufferedAdHocDataset(Dataset):
+    def __init__(self, ids, features: list = FEATURES_FOR_BATCH, depth: bool = True, rgb: bool = False,
+                 transform=None, buffer_size:int=100_000):
+        '''
+        #TODO klasa trzyma w bufferze ścieżki załadowane z dysku, dopychamy do niej nowe (dir, step) po zapisie np. 1000 stepów wypychając 1000 najstarszych entry.
+        #Dataloader trzyma referencje a nie obiekt więc będzie updatował na bierząco
+        '''
+        assert isinstance(ids, (list, np.array)), 'Ids should be an array of tuples (dir,  step)'
+        assert isinstance(ids[0], (list, tuple)) and len(
+            ids[0]) == 2, 'Element of ids should be an array, list or tuple containing 2 elements'
 
-    def get_supervised_batch(self):
-        pass
+        self.ids = ids
+        self.dfs = list(set([id[0] for id in ids]))
+        self.dfs = {directory: pd.read_csv(f'{directory}/episode_info.csv') for directory in self.dfs}
+        # [path for path, df in dataset.dfs.items() if 'q' not in df.columns] dont use csvs without q
+        self.features = features + list(filter(lambda x: len(x) > 1, ['depth_indexes' * depth, 'rgb_indexes' * rgb]))
+        self.transform = transform if transform else lambda x: x
+        self.buffer = []
+        self.capacity = buffer_size
+        self.pos = 0
 
-    def get_reinforcement_batch(self):
-        pass
+    def __len__(self):
+        return len(self.buffer)
 
+    def __getitem__(self, item_idx):
 
+        return self.buffer[item_idx]
+
+    def populate(self, n:int=1):
+        '''
+        Load n-samples to buffer
+        :return:
+        '''
+        for i in range(n):
+            item_idx = np.random.randint(0, len(self.ids))
+            data = self.dfs[self.ids[item_idx][0]].loc[self.ids[item_idx][1], self.features].to_dict()
+            sample = {'item': self.ids[item_idx], 'data': data}
+            self.ids.pop(item_idx)
+            self._add(self.transform(sample))
+
+    def add_to_buffer(self, sample):
+        #transform 2 current buffer form with transformations
+        self._add(self.transform(sample))
+
+    def _add(self, sample):
+        if len(self.buffer) < self.capacity:
+            self.buffer.append(sample)
+        else:
+            self.buffer[self.pos] = sample
+        self.pos = (self.pos + 1) % self.capacity
+
+    def get_batch(self, batch_size=32):
+        return self.buffer[np.random.randint(0, len(self), size=(batch_size))]
 
 
 

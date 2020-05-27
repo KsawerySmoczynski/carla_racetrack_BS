@@ -1,6 +1,8 @@
 import datetime
 import json
 
+import torch
+
 config_dict = json.load(open('../config.json'))
 
 #General
@@ -32,8 +34,10 @@ SENSORS = {
 }
 
 # RL config
+DEVICE = torch.device('cuda:0')
 NEGATIVE_REWARD = -100
-FEATURES_FOR_BATCH = ['step','distance_2finish','velocity','collisions','steer','gas_brake','reward', 'q']
+NUMERIC_FEATURES = ['distance_2finish','velocity','collisions']
+FEATURES_FOR_BATCH = ['step',*NUMERIC_FEATURES,'steer','gas_brake','reward', 'q']
 NO_AGENTS = 2
 GAMMA = .999
 LEARNING_RATE = 0.001
