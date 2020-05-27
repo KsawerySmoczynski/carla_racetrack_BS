@@ -15,7 +15,7 @@ from tensorboardX import SummaryWriter
 
 #Configs
 from config import DATA_PATH, FRAMERATE, TENSORBOARD_DATA, GAMMA, \
-    DATE_TIME, SENSORS, VEHICLE, CARLA_IP, MAP, INVERSE, NO_AGENTS, NEGATIVE_REWARD
+    DATE_TIME, SENSORS, VEHICLES, CARLA_IP, MAP, INVERSE, NO_AGENTS, NEGATIVE_REWARD
 
 from utils import tensorboard_log, visdom_log, visdom_initialize_windows, init_reporting, save_info, update_Qvals
 
@@ -54,11 +54,14 @@ def main():
         metavar='M',
         default=MAP,
         help='Avialable maps: "circut_spa", "RaceTrack", "Racetrack2". Default: "circut_spa"')
+
     argparser.add_argument(
         '--vehicle',
         metavar='V',
-        default=VEHICLE,
-        help='Carla Vehicle blueprint Default: "vehicle.audi.tt"')
+        default=0,
+        type=int,
+        dest='vehicle',
+        help='Carla Vehicle blueprint, choose with integer. Avialable: ["vehicle.dodge_charger.police", "vehicle.mustang.mustang", "vehicle.tesla.model3", "vehicle.audi.etron"] Default: "vehicle.dodge_charger.police"')
 
     # Simulation
     argparser.add_argument(
@@ -168,7 +171,7 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
 
     environment = Environment(client=client)
     world = environment.reset_env(args)
-    agent_config = {'world':world, 'controller':controller, 'vehicle':args.vehicle,
+    agent_config = {'world':world, 'controller':controller, 'vehicle':VEHICLES[args.vehicle],
                     'sensors':SENSORS, 'spawn_points':spawn_points}
     environment.init_agents(no_agents=args.no_agents, agent_config=agent_config)
     environment.init_vehicles()
@@ -227,6 +230,8 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
 
     for agent_path in save_paths:
         update_Qvals(path=agent_path)
+
+    world.tick()
 
     status, actor_dict, env_dict, sensor_data = str, dict, dict, list
 

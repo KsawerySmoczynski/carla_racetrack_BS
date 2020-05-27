@@ -18,7 +18,7 @@ FRAMERATE = 30
 MAP = 'circut_spa'
 INVERSE = False
 
-VEHICLE = 'vehicle.dodge_charger.police'
+VEHICLES = ['vehicle.dodge_charger.police', 'vehicle.mustang.mustang', 'vehicle.tesla.model3']
 
 #Controller config
 IMAGE_DOWNSIZE_FACTOR = 10
@@ -33,9 +33,9 @@ SENSORS = {
 
 # RL config
 NEGATIVE_REWARD = -100
-FEATURES_FOR_BATCH = ['step','collisions','velocity','steer','gas_brake','reward', 'q']
+FEATURES_FOR_BATCH = ['step','distance_2finish','velocity','collisions','steer','gas_brake','reward', 'q']
 NO_AGENTS = 2
-GAMMA = .9995
+GAMMA = .999
 LEARNING_RATE = 0.001
 NUMBER_OF_EPOCHS = 100
 BATCH_SIZE = 20

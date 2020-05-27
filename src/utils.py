@@ -5,10 +5,12 @@ import numpy as np
 import pandas as pd
 import carla
 import visdom
+from matplotlib import pyplot as plt
 from tensorboardX import SummaryWriter
 
 from config import IMAGE_DOWNSIZE_FACTOR, DATE_TIME, GAMMA
 from spawn import location_to_numpy, calc_azimuth
+
 
 to_array = lambda img: np.asarray(img.raw_data, dtype=np.int8).reshape(img.height, img.width, 4)  # 4 because image is in BRGB format
 to_rgb_resized = lambda img: img[..., :3][::IMAGE_DOWNSIZE_FACTOR, ::IMAGE_DOWNSIZE_FACTOR, ::-1]  # making it RGB from BRGB with [...,:3][...,::-1]
@@ -44,10 +46,10 @@ def calc_distance(actor_location:np.array, points_3D:np.array, cut:float=0.02) -
     else:
         skip = skipped_points
     actor_to_point = np.linalg.norm(points_3D[skip] - actor_location)
-    points_deltas = np.diff(points_3D, axis=0)
-    distance = actor_to_point + np.sqrt((points_deltas[skip-1:]**2).sum(axis=1)).sum()
+    points_deltas = np.diff(points_3D[skip:], axis=0)
+    distance = actor_to_point + np.sqrt((points_deltas**2).sum(axis=1)).sum()
 
-    return (distance / np.sqrt((points_deltas**2).sum(axis=1)).sum()) * 1000
+    return distance
 
 
 def visdom_initialize_windows(viz:visdom.Visdom, title:str, sensors:dict, location):
@@ -196,7 +198,7 @@ def rgb2gray_array(rgb_array):
     :param rgb_array:
     :return:
     '''
-    return np.array([rgb2gray(img) for img in rgb_array], dtype=rgb_array.dtype)
+    return np.array([rgb2gray(img) for img in rgb_array], dtype=rgb_array[0].dtype)
 
 
 def rgb2gray(rgb):
@@ -208,3 +210,12 @@ def rgb2gray(rgb):
     coeffs = np.array([0.2125, 0.7154, 0.0721], dtype=rgb.dtype)
     return rgb @ coeffs
 
+
+def plot_gray(img):
+    '''
+    img has to have shape (1, H, W)
+    :param img:
+    :return:
+    '''
+    plt.imshow(img, cmap='gray', vmin=0, vmax=255)
+    plt.show()

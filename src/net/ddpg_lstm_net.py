@@ -20,7 +20,6 @@ class DDPG(torch.nn.Module):
         :param n_numeric_inputs:
         :param rgb:
         '''
-
         #Num inputs to szerokość
         super(DDPG, self).__init__()
         self.conv_depth = nn.Conv2d(depth_shape[0], 64, 5, stride=1, padding=2)
@@ -28,18 +27,15 @@ class DDPG(torch.nn.Module):
         if list(rgb_shape):
             self.conv_rgb = nn.Conv2d(rgb_shape[0], 64, 5, stride=1, padding=2)
             self.conv_rgb2 = nn.Conv2d(64, 32, 3, stride=1, padding=1)
-        #may be a problem, just add maxpool to particular layers
         self.maxp1 = nn.MaxPool2d(2, 2)
         self.maxp2 = nn.MaxPool2d(2, 2)
 
-        self.linear = nn.Linear(numeric_shape[0], 64)
+        self.fc = nn.Linear(numeric_shape[0], 64)
 
-        fc2_input = self.conv_depth2.out_channels + self.linear.out_features
-        if list(rgb_shape):
-            fc2_input += self.conv_rgb2.out_channels
-            self.linear2 = nn.Linear(fc2_input, 256)
+        if list(rgb):
+            self.lstm = nn.LSTMCell(512, 256)
         else:
-            self.linear2 = nn.Linear(fc2_input, 256)
+            self.lstm = nn.LSTMCell(256, 256)
 
         self.apply(weights_init)
         relu_gain = nn.init.calculate_gain('relu')
@@ -49,84 +45,80 @@ class DDPG(torch.nn.Module):
             self.conv_rgb.weight.data.mul_(relu_gain)
             self.conv_rgb2.weight.data.mul_(relu_gain)
 
-        self.linear.weight.data = norm_col_init(
-            self.linear.weight.data, 1.0)
-        self.linear.bias.data.fill_(0)
 
-        self.linear2.weight.data = norm_col_init(
-            self.linear2.weight.data, 1.0)
-        self.linear2.bias.data.fill_(0)
+        self.lstm.bias_ih.data.fill_(0)
+        self.lstm.bias_hh.data.fill_(0)
 
         self.train()
 
     def forward(self, inputs):
-        x_numeric, depth, rgb = inputs #-> transform inputs
+        x_numeric, depth, rgb, (hx, cx) = inputs #-> transform inputs
 
-        x_numeric = self.linear(x_numeric)
+        x_numeric = self.fc(x_numeric)
 
         #Adhoc conversion from rgb to depth
         x_depth = F.relu(self.maxp1(self.conv_depth(depth)))
         x = F.relu(self.maxp2(self.conv_depth2(x_depth)))
 
-
         if self.rgb:
-            x_rgb = F.relu(self.maxp1(self.conv_rgb(rgb)))
-            x_rgb = F.relu(self.maxp2(self.conv_rgb2(x_rgb)))
-            # x_rgb = x_rgb.view(x_rgb.size(0), -1)
+            x_rgb = F.relu(self.maxp1(self.conv_depth(rgb)))
+            x_rgb = F.relu(self.maxp2(self.conv2(x_rgb)))
+            x_rgb = x_rgb.view(x_rgb.size(0), -1)
             x = torch.cat((x, x_rgb), dim=1)
 
         x = x.view(x.size(0), -1)
+        hx, cx = self.lstm(x, (hx, cx))
         x = torch.cat((x_numeric,x), dim=0)
-        x = self.linear2(x)
 
-        return x
+        return x, (hx, cx)
 
 
 class DDPGActor(DDPG):
-    def __init__(self, depth_shape, numeric_shape, output_shape, rgb:bool=False, rgb_shape:bool=None):
+    def __init__(self, depth_shape, numeric_shape, rgb_shape, output_shape, rgb:bool=False):
         super(DDPGActor, self).__init__(depth_shape, numeric_shape, rgb_shape, rgb)
-        self.actor_linear = nn.Linear(self.linear.out_features + self.lstm.hidden_size, output_shape)
+        self.actor_linear = nn.Linear(self.fc.out_features + self.lstm.hidden_size, output_shape)
         self.actor_linear.weight.data = norm_col_init(
             self.actor_linear.weight.data, 0.01)
         self.actor_linear.bias.data.fill_(0)
 
 
     def forward(self, inputs):
-        x_numeric, depth, rgb = *inputs, None  # -> transform inputs
+        x_numeric, depth, rgb, (hx, cx) = inputs #-> transform inputs
 
-        x_numeric = self.linear(x_numeric)
+        x_numeric = self.fc(x_numeric)
 
-        # Adhoc conversion from rgb to depth
+        #Adhoc conversion from rgb to depth
         x_depth = F.relu(self.maxp1(self.conv_depth(depth)))
         x = F.relu(self.maxp2(self.conv_depth2(x_depth)))
 
         if self.rgb:
-            x_rgb = F.relu(self.maxp1(self.conv_rgb(rgb)))
-            x_rgb = F.relu(self.maxp2(self.conv_rgb2(x_rgb)))
-            # x_rgb = x_rgb.view(x_rgb.size(0), -1)
+            x_rgb = F.relu(self.maxp1(self.conv_depth(rgb)))
+            x_rgb = F.relu(self.maxp2(self.conv2(x_rgb)))
+            x_rgb = x_rgb.view(x_rgb.size(0), -1)
             x = torch.cat((x, x_rgb), dim=1)
 
         x = x.view(x.size(0), -1)
-        x = torch.cat((x_numeric, x), dim=0)
-        x = self.linear2(x)
+        hx, cx = self.lstm(x, (hx, cx))
+        x = torch.cat((x_numeric, hx), dim=0)
+
         x = self.actor_linear(x)
 
-        return x
+        return x, (hx, cx)
 
 
 class DDPGCritic(DDPG):
     def __init__(self, actor_out_shape, depth_shape, numeric_shape, rgb_shape:bool=None, rgb:bool=False):
         super(DDPGCritic, self).__init__(depth_shape, numeric_shape, rgb_shape, rgb)
-        self.critic_linear = nn.Linear(actor_out_shape[0] + self.linear.out_features + self.lstm.hidden_size, 1)
+        self.critic_linear = nn.Linear(actor_out_shape[0] + self.fc.out_features + self.lstm.hidden_size, 1)
 
         self.critic_linear.weight.data = norm_col_init(
             self.critic_linear.weight.data, 1.0)
         self.critic_linear.bias.data.fill_(0)
 
     def forward(self, inputs):
-        x_actor, x_numeric, depth, rgb  = *inputs, None #-> transform inputs
+        x_actor, x_numeric, depth, rgb, (hx, cx) = inputs #-> transform inputs
 
-        x_numeric = self.linear(x_numeric)
+        x_numeric = self.fc(x_numeric)
 
         #Adhoc conversion from rgb to depth
         x_depth = F.relu(self.maxp1(self.conv_depth(depth)))

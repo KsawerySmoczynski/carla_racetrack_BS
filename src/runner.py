@@ -17,7 +17,7 @@ from tensorboardX import SummaryWriter
 #Configs
 #TODO Add dynamically generated foldername based on config settings and date.
 from config import DATA_PATH, FRAMERATE, TENSORBOARD_DATA, GAMMA, \
-    DATE_TIME, SENSORS, VEHICLE, CARLA_IP, MAP, NEGATIVE_REWARD
+    DATE_TIME, SENSORS, VEHICLES, CARLA_IP, MAP, NEGATIVE_REWARD
 
 from utils import tensorboard_log, visdom_log, init_reporting, save_info, update_Qvals
 
@@ -54,11 +54,14 @@ def main():
         metavar='M',
         default=MAP,
         help='Avialable maps: "circut_spa", "RaceTrack", "Racetrack2". Default: "circut_spa"')
+
     argparser.add_argument(
         '--vehicle',
         metavar='V',
-        default=VEHICLE,
-        help='Carla Vehicle blueprint Default: "vehicle.audi.tt"')
+        default=0,
+        type=int,
+        dest='vehicle',
+        help='Carla Vehicle blueprint, choose with integer. Avialable: ["vehicle.dodge_charger.police", "vehicle.mustang.mustang", "vehicle.tesla.model3", "vehicle.audi.etron"] Default: "vehicle.dodge_charger.police"')
 
     # Simulation
     argparser.add_argument(
@@ -161,7 +164,7 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
 
     environment = Environment(client=client)
     world = environment.reset_env(args)
-    agent_config = {'world':world, 'controller':controller, 'vehicle':args.vehicle,
+    agent_config = {'world':world, 'controller':controller, 'vehicle':VEHICLES[args.vehicle],
                     'sensors':SENSORS, 'spawn_points':spawn_points}
     agent = Agent(**agent_config)
     agent.initialize_vehicle()
@@ -220,9 +223,7 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
             print(f'failed, collision {str(agent)}')
             save_info(path=agent.save_path, state=state, action=action,
                       reward=NEGATIVE_REWARD * (GAMMA ** step))
-            agent.actor.apply_control(carla.VehicleControl(throttle=0, brake=1, hand_brake=True))
-            agent.actor.set_velocity(carla.Vector3D(0., 0., 0.))
-            environment.toggle_world(20)
+            agent.destroy()
             break
 
         save_info(path=agent.save_path, state=state, action=action, reward=reward)
@@ -235,6 +236,8 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
 
     #Calc Qvalues and add to reporting file
     update_Qvals(path=agent.save_path)
+
+    world.tick()
 
     status, actor_dict, env_dict, sensor_data = str, dict, dict, list
 

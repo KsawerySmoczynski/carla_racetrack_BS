@@ -425,9 +425,14 @@ class Environment:
 
         if calc_distance(actor_location=next_state['location'], points_3D=points_3D) >= calc_distance(
                 actor_location=state['location'], points_3D=points_3D):
-            return -(next_state['velocity'] / (state['velocity'] + 1)) * (gamma ** step) - punishment
+            return -(next_state['velocity'] / (state['velocity'] + 0.2)) * (gamma ** step) - punishment
 
-        #TODO punishment = step * punishment -> very small value for punishment grows with time
-        # return (next_state['velocity']/(state['velocity'] + 1)) * \
-        #        ((tracklen - calc_from_closest_distance) - distance_travelled )  * (gamma**step)
-        return (next_state['velocity'] / (state['velocity'] + 1)) * (gamma ** step) - punishment
+        return (next_state['velocity'] / (state['velocity'] + 0.2)) * (gamma ** step) - punishment
+
+    def calc_reward_distance(self, points_3D:np.array, state:dict, next_state, gamma: float = .995, punishment:float=0.05, step: int = 0) -> float:
+        state_distance = calc_distance(actor_location=state['location'], points_3D=points_3D)
+        next_distance = calc_distance(actor_location=next_state['location'], points_3D=points_3D)
+
+        reward = (((state_distance - 1e-50) / next_distance) - 1) * 100 *  (gamma ** step) - punishment
+
+        return reward
