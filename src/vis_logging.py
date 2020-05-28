@@ -10,6 +10,17 @@ from ast import literal_eval
 
 from config import DATE_TIME, SENSORS, EXPERIMENTS_PATH, MAP, INVERSE
 
+"""
+The idea of the visdom usage for ongoing models is calling vis_initialize_windows() and saving the windows,
+then each n batches or each epoch call vis_log_photos() then vis_log_data() and pass the data gathered so far through the 'data' parameter
+When visualizing an ongoing model - set data_path to None to avoid visualizing offline data instead of the passed freshly generated values
+
+You can add a custom window to your visdom dashboard with vis_add_custom_window() and specify it's name.
+After you call vis_add_custom_window() keep in mind to pass it's data on each vis_log_data() call using the data dictionary
+custom windows support just line graphs, they cannot visualize other stuff
+
+To visualize offline data simply run this script
+"""
 
 def vis_initialize_windows(visdom:vis.Visdom, sensors:dict):
 
@@ -25,8 +36,18 @@ def vis_initialize_windows(visdom:vis.Visdom, sensors:dict):
 
     return windows
 
+def vis_add_custom_window(visdom:vis.Visdom, windows:dict, new_win_name:str="New window"):
+    
+    if new_win_name not in windows.keys():
+        windows['custom_windows'] = {new_win_name: visdom.line(X=[0], Y=[0], opts=dict(title=f'{DATE_TIME} {new_win_name}'))}
+    else:
+        print("window with this name already exists")
+        return windows
+        
+    return windows
 
-def vis_log_data(visdom:vis.Visdom, windows:dict, data_path:str) -> int:
+
+def vis_log_data(visdom:vis.Visdom, windows:dict, data_path:str, data:dict) -> int:
     '''
 
     :param viz:
@@ -35,9 +56,10 @@ def vis_log_data(visdom:vis.Visdom, windows:dict, data_path:str) -> int:
     :return:
     '''
     #Dont load whole file only last row, and append last row
-    data = pd.read_csv(f'{data_path}/episode_info.csv')
-    data['location'] = [literal_eval(item) for item in data['location']]
-    data['velocity_vec'] = [literal_eval(item) for item in data['velocity_vec']]
+    if data_path:
+        data = pd.read_csv(f'{data_path}/episode_info.csv')
+        data['location'] = [literal_eval(item) for item in data['location']]
+        data['velocity_vec'] = [literal_eval(item) for item in data['velocity_vec']]
 
     location_x = [x[0] for x in data['location']]
     location_y = [x[1] for x in data['location']]
@@ -55,11 +77,19 @@ def vis_log_data(visdom:vis.Visdom, windows:dict, data_path:str) -> int:
                 'xtickmax': max(data['step']) + 0.05 * data['step'].mean()}
         visdom.line(X=data['step'], Y=data[value], win=windows[value], update='replace',
                     opts= opts)
+        
+    for custom_window in windows['custom_windows']:
+        opts = {'ytickmin': min(data[custom_window]) - 0.1 * data[custom_window].mean(),
+                'ytickmax': max(data[custom_window]) + 0.1 * data[custom_window].mean(),
+                'xtickmin': min(data['step']) - 0.05 * data['step'].mean(),
+                'xtickmax': max(data['step']) + 0.05 * data['step'].mean()}
+        visdom.line(X=data['step'], Y=data[custom_window], win=windows[custom_window], update='replace',
+                    opts= opts)
 
     return list(data['step'])[-1]
 
 
-def vis_log_photos(visdom:vis, windows:dict, data_path:str, sensors:dict):
+def vis_log_photos(visdom:vis, windows:dict, data_path:str, sensors:dict, data:dict):
     '''
     Show most recent frame
     :param visdom:
@@ -68,9 +98,14 @@ def vis_log_photos(visdom:vis, windows:dict, data_path:str, sensors:dict):
     :param sensors:
     :return:
     '''
-    idx = max([int(x.split('_')[-1][:-4]) for x in os.listdir(f'{data_path}/sensors')])
+    if data_path:
+        idx = max([int(x.split('_')[-1][:-4]) for x in os.listdir(f'{data_path}/sensors')])
     for sensor in [sensor for sensor, value in sensors.items() if value & (sensor is not 'collisions')]:
-        img = np.array(Image.open(f'{data_path}/sensors/{sensor}_{idx}.png')).astype(np.uint8)
+        if data_path:
+            img = np.array(Image.open(f'{data_path}/sensors/{sensor}_{idx}.png')).astype(np.uint8)
+        else:
+            #data[sensor] needs to be uint8 numpy array like above
+            img = data[sensor]
         img = np.moveaxis(img, 2, 0)
         visdom.image(img=img, win=windows[sensor], opts=dict(title=json.loads(visdom.get_window_data(windows[sensor]))['title'], width=800, height=600))
 
@@ -89,7 +124,6 @@ def vis_run(visdom:vis.Visdom, data_path:str, photos_refresh:float=0.2, data_rat
             passed_time = 0
         passed_time += photos_refresh
         time.sleep(photos_refresh)
-
 
 def main():
 

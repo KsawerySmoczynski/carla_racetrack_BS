@@ -33,6 +33,7 @@ from net.utils import get_paths, DepthPreprocess, ToSupervised, SimpleDataset, u
 def main(args):
 
     device = torch.device('cuda:0')
+
     no_epochs = 5
     batch_size = 128
     depth_shape = [1, 60, 320]
@@ -40,9 +41,10 @@ def main(args):
     linear_hidden = 512
     conv_hidden = 64
 
+
     #Get train test paths -> later on implement cross val
     steps = get_paths(as_tuples=True, shuffle=True)
-    steps_train, steps_test = steps[:int(len(steps)*.8)], steps[int(len(steps)*.8):]
+    steps_train, steps_test = steps[:int(len(steps)*.8)], steps[int(len(steps)*.2):]
 
     dataset_train = SimpleDataset(ids=steps_train, batch_size=batch_size, transform=transforms.Compose([DepthPreprocess(), ToSupervised()]))
     dataset_test = SimpleDataset(ids=steps_test, batch_size=batch_size, transform=transforms.Compose([DepthPreprocess(), ToSupervised()]))
@@ -155,6 +157,7 @@ def train(input:list, label:torch.Tensor, net:nn.Module, optimizer:torch.optim.O
     optimizer.step()
 
     return loss, grad
+
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser()
