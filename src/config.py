@@ -36,7 +36,7 @@ SENSORS = {
 # RL config
 DEVICE = torch.device('cuda:0')
 NEGATIVE_REWARD = -100
-NUMERIC_FEATURES = ['distance_2finish','velocity','collisions']
+NUMERIC_FEATURES = ['state_steer', 'state_gas_brake','distance_2finish','velocity','collisions']
 FEATURES_FOR_BATCH = ['step',*NUMERIC_FEATURES,'steer','gas_brake','reward', 'q']
 NO_AGENTS = 2
 GAMMA = .999

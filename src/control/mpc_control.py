@@ -224,8 +224,8 @@ class MPCController(Controller):
             print('Unsuccessful optimization')
 
         actions = {
-            'steer': self.steer,
-            'gas_brake': self.throttle,
+            'steer': round(self.steer, 3),
+            'gas_brake': round(self.throttle, 3),
         }
 
         return actions

@@ -1,5 +1,6 @@
-import time
 import argparse
+import time
+
 import numpy as np
 import pandas as pd
 import carla
@@ -14,14 +15,13 @@ from control.abstract_control import Controller
 from tensorboardX import SummaryWriter
 
 #Configs
+#TODO Add dynamically generated foldername based on config settings and date.
 from config import DATA_PATH, FRAMERATE, TENSORBOARD_DATA, GAMMA, \
-    DATE_TIME, SENSORS, VEHICLES, CARLA_IP, MAP, INVERSE, NO_AGENTS, NEGATIVE_REWARD
+    DATE_TIME, SENSORS, VEHICLES, CARLA_IP, MAP, NEGATIVE_REWARD
 
-from utils import tensorboard_log, visdom_log, visdom_initialize_windows, init_reporting, save_info, update_Qvals
+from utils import tensorboard_log, visdom_log, init_reporting, save_info, update_Qvals
 
 
-#Use this script only for data generation
-# for map in 'circut_spa' 'RaceTrack' 'RaceTrack2'; do for car in 0 1 2; do for speed in 150 100 80; do python runner_multiagent.py --map=$map --vehicle=$car --speed=$speed ; done; done; done;
 def main():
     argparser = argparse.ArgumentParser()
     # Simulator configs
@@ -92,13 +92,6 @@ def main():
         dest='steps_ahead',
         help='steps 2calculate ahead for mpc')
 
-    argparser.add_argument(
-        '--no_agents',
-        default=NO_AGENTS,
-        type=int,
-        dest='no_agents',
-        help='no of spawned agents')
-
     # Logging configs
     argparser.add_argument(
         '--tensorboard',
@@ -109,12 +102,12 @@ def main():
     args = argparser.parse_known_args()
     if len(args) > 1:
         args = args[0]
-    # return args
+
     run_client(args)
 
 
 def run_client(args):
-    # args = main()
+
     args.host = 'localhost'
     args.port = 2000
 
@@ -135,9 +128,9 @@ def run_client(args):
 
     # load spawnpoints from csv -> generate spawn points from notebooks/20200414_setting_points.ipynb
     spawn_points_df = pd.read_csv(f'{DATA_PATH}/spawn_points/{args.map}.csv')
-    spawn_points = df_to_spawn_points(spawn_points_df, n=10000, inverse=INVERSE) #We keep it here in order to have one way simulation within one script
+    spawn_points = df_to_spawn_points(spawn_points_df, n=10000, inverse=False) #We keep it here in order to have one way simulation within one script
 
-    # Controller initialization - we initialize one controller for n-agents, what happens in multiprocessing.
+    # Controller initialization
     if args.controller is 'MPC':
         controller = MPCController(target_speed=TARGET_SPEED, steps_ahead=STEPS_AHEAD, dt=0.1)
 
@@ -173,63 +166,76 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
     world = environment.reset_env(args)
     agent_config = {'world':world, 'controller':controller, 'vehicle':VEHICLES[args.vehicle],
                     'sensors':SENSORS, 'spawn_points':spawn_points}
-    environment.init_agents(no_agents=args.no_agents, agent_config=agent_config)
-    environment.init_vehicles()
+    agent = Agent(**agent_config)
+    agent.initialize_vehicle()
     spectator = world.get_spectator()
     spectator.set_transform(numpy_to_transform(
-        spawn_points[environment.agents[0].spawn_point_idx-30]))
+        spawn_points[agent.spawn_point_idx-30]))
 
-    environment.stabilize_vehicles()
+    agent_transform = None
+    world.tick()
+    world.tick()
+    # Calculate norm of all cordinates
+    while (agent_transform != agent.transform).any():
+        agent_transform = agent.transform
+        world.tick()
 
     #INITIALIZE SENSORS
-    environment.initialize_agents_sensors()
+    agent.initialize_sensors()
+
+    # Initialize visdom windows
 
     # Release handbrake
     world.tick()
     time.sleep(1)
-    environment.initialize_agents_reporting(sensors=SENSORS)
-    save_paths = [agent.save_path for agent in environment.agents]
+    init_reporting(path=agent.save_path, sensors=SENSORS)
 
     for step in range(NUM_STEPS):  #TODO change to while with conditions
         #Retrieve state and actions
 
-        states = [agent.get_state(step, retrieve_data=True) for agent in environment.agents]
+        state = agent.get_state(step, retrieve_data=True)
+
+        #Check if state is terminal
+
 
         #Apply action
-        actions = [agent.play_step(state) for agent, state in zip(environment.agents, states)]
+        action = agent.play_step(state) #TODO split to two functions
         # actions.append(action)
 
         #Transit to next state
         world.tick()
+        next_state = {
+            'velocity': agent.velocity,
+            'location': agent.location
+        }
 
-        next_states = [{'velocity': agent.velocity,'location': agent.location} for agent in environment.agents]
+        #Receive reward
+        reward = environment.calc_reward(points_3D=agent.waypoints, state=state, next_state=next_state,
+                                         gamma=GAMMA, step=step)
 
-        rewards = [environment.calc_reward(points_3D=agent.waypoints, state=state, next_state=next_state,
-                                           gamma=GAMMA, step=step) for agent, state, next_state in zip(environment.agents, states, next_states)]
-
-        for idx, (state, agent) in enumerate(zip(states, environment.agents)):
-            if state['distance_2finish'] < 5:
-                print(f'agent {str(agent)} finished the race in {step} steps car {args.vehicle}')
-                save_info(path=agent.save_path, state=state, action=action, reward=0)
-                agent.destroy(data=True)
-                environment.agents.pop(idx)
-
-            if state['collisions'] > 0:
-                print(f'failed, collision {str(agent)} at step {step}, car {args.vehicle}')
-                save_info(path=agent.save_path, state=state, action=action,
-                          reward=reward + NEGATIVE_REWARD * (GAMMA ** step))
-                agent.destroy(data=True)
-                environment.agents.pop(idx)
-
-        for agent, state, action, reward in zip(environment.agents, states, actions, rewards):
-            save_info(path=agent.save_path, state=state, action=action, reward=reward)
-
-        if len(environment.agents) < 1:
-            print('fini')
+        if state['distance_2finish'] < 5:
+            print(f'agent {str(agent)} finished the race in {step} steps')
+            save_info(path=agent.save_path, state=state, action=action, reward=0)
+            update_Qvals(agent.save_path)
             break
 
-    for agent_path in save_paths:
-        update_Qvals(path=agent_path)
+        if state['collisions'] > 0:
+            print(f'failed, collision {str(agent)}')
+            save_info(path=agent.save_path, state=state, action=action,
+                      reward=NEGATIVE_REWARD * (GAMMA ** step))
+            agent.destroy()
+            break
+
+        save_info(path=agent.save_path, state=state, action=action, reward=reward)
+
+        # print(f'step:{step} data:{len(agent.sensors["depth"]["data"])}')
+        #Log
+        if ((agent.velocity < 20) & (step % 10 == 0)) or (step % 50 == 0):
+            set_spectator_above_actor(spectator, agent.transform)
+        # time.sleep(0.1)
+
+    #Calc Qvalues and add to reporting file
+    update_Qvals(path=agent.save_path)
 
     world.tick()
 

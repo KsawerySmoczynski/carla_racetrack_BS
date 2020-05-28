@@ -10,7 +10,7 @@ import torch.multiprocessing as mp
 from config import IMAGE_DOWNSIZE_FACTOR, FRAMERATE, DATA_PATH, DATE_TIME, SENSORS, INVERSE
 from control.abstract_control import Controller
 from spawn import sensors_config, numpy_to_transform, velocity_to_kmh, transform_to_numpy, location_to_numpy, \
-    to_vehicle_control
+    to_vehicle_control, control_to_gas_brake
 from utils import to_rgb_resized, to_array, calc_distance, save_img, init_reporting
 
 
@@ -39,7 +39,7 @@ class Agent:
         self.sensors = sensors_config(self.world.get_blueprint_library(), **sensors)
         self.spawn_point_idx = spawn_point_idx or int(np.random.randint(len(spawn_points)))
         self.spawn_point = spawn_points[self.spawn_point_idx]
-        self.waypoints = np.concatenate([spawn_points[self.spawn_point_idx:, :], spawn_points[:self.spawn_point_idx, :]])[:, :3]  # delete yaw column
+        self.waypoints = np.concatenate([spawn_points[self.spawn_point_idx:, :], spawn_points[:self.spawn_point_idx-20, :]])[:, :3]  # delete yaw column, does not allow agent to go backward
         self.initialized = False
         self.sensors_initialized = False
         self.no_data_points = no_data_points
@@ -113,18 +113,16 @@ class Agent:
                 state[f'{sensor}_data'] = data
 
         state['collisions'] = sum(self.sensors['collisions']['data'])
+        control = self.actor.get_control()
+        state['state_steer'] = control.steer
+        state['state_gas_brake'] = control_to_gas_brake(control)
         state['velocity'] = self.velocity
         state['velocity_vec'] = list(self.velocity_vec)
         state['yaw'] = self.transform[3] #hardcoded thats bad
         state['location'] = list(self.location)
         state['distance_2finish'] = calc_distance(actor_location=state['location'],
                                                   points_3D=self.waypoints)
-        # if 'hx' in kwargs.keys() and 'cx' in kwargs.keys():
-        #     state['hx'] = kwargs['hx']
-        #     state['cx'] = kwargs['cx']
-        # else:
-        #     state['hx'] = torch.zeros(size=(1, self.net.lstm.hidden_size))
-        #     state['cx'] = torch.zeros(size=(1, self.net.lstm.hidden_size))
+
 
         self._release_data(state['step'])
 

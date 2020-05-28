@@ -1,18 +1,18 @@
 import ast
 import os
 import random
-import linecache
 import torch
 import numpy as np
 import pandas as pd
-from PIL import Image
+from PIL import Image, ImageFilter
 from torch.utils.data import Dataset
 from torchvision import transforms
 
-from config import SENSORS, FEATURES_FOR_BATCH, DEVICE
-from utils import rgb2gray_array
+from config import SENSORS, FEATURES_FOR_BATCH, DEVICE, NUMERIC_FEATURES
+
 
 to_list = lambda x: ast.literal_eval(x)
+img_to_pil = lambda img: Image.fromarray(img, 'RGB').convert('L').filter(ImageFilter.FIND_EDGES)
 
 def norm_col_init(weights, std=1.0):
     x = torch.randn(weights.size())
@@ -36,6 +36,7 @@ def weights_init(m, cuda:bool = True):
         m.weight.data.uniform_(-w_bound, w_bound)
         m.bias.data.fill_(0)
 
+
 def get_paths(path:str='../data/experiments', sensors:dict=SENSORS, as_tuples:bool=False, shuffle:bool=False) -> dict:
     '''
     Method to
@@ -45,14 +46,16 @@ def get_paths(path:str='../data/experiments', sensors:dict=SENSORS, as_tuples:bo
     '''
     sensors_config = '_'.join([sensor*value for sensor, value in sensors.items()])
     paths = [f'{root}/{dir}' for root, dirs, files in os.walk(path) for dir in dirs if sensors_config in dir]
-    paths = {path:max([int(frame.split('_')[-1][:-4]) for frame in os.listdir(f'{path}/sensors')]) for path in paths}
+    paths = [path for path in paths if 'q' in pd.read_csv(f"{path}/episode_info.csv", nrows=1).columns]
+    steps = {path:max([int(frame.split('_')[-1][:-4]) for frame in os.listdir(f'{path}/sensors')]) for path in paths}
     # dataframes = {path: pd.read_csv(f'{path}/episode_info.csv') for path in max_draw.keys() for path in paths} if dfs else None
     if as_tuples:
-        steps =  [(path, step) for path, steps_q in paths.items() for step in range(steps_q)]
+        steps =  [(path, step) for path, steps_q in steps.items() for step in range(steps_q)]
         if shuffle:
             steps = [steps[i] for i in np.random.permutation(range(len(steps)))]
 
     return steps
+
 
 def select_batch(paths:dict, states_per_batch:int=32) -> list:
     '''
@@ -69,6 +72,7 @@ def select_batch(paths:dict, states_per_batch:int=32) -> list:
 
     return batch_indexes
 
+
 def load_frames(path:str, sensor:str, indexes:list, convert=lambda x:x) -> list:
     '''
 
@@ -84,6 +88,7 @@ def load_frames(path:str, sensor:str, indexes:list, convert=lambda x:x) -> list:
         frames.append(img)
 
     return frames
+
 
 def load_batch(states_indexes:list, dataframes:dict):
     '''
@@ -124,6 +129,7 @@ def unpack_supervised_batch(batch, device=DEVICE):
     input, action, q = batch
     return (input[0].float().to(device), input[1].float().to(device)), action.float().to(device), q.float().to(device)
 
+
 class OldToSupervised(object):
     def __call__(self, sample):
         inputs = [np.array([sample['data'][data] for data in ['distance_2finish', 'velocity', 'collisions']]), sample['data']['depth']]  # + [[np.Nan]]  # - how to add None
@@ -136,8 +142,10 @@ class OldToSupervised(object):
 
 
 class ToSupervised(object):
+    def __init__(self, features:list=NUMERIC_FEATURES):
+        self.features = features
     def __call__(self, sample):
-        input = [np.array([sample['data'][data] for data in ['distance_2finish', 'velocity', 'collisions']]), sample['data']['depth']]  # + [[np.Nan]]  # - how to add None
+        input = [np.array([sample['data'][data] for data in self.features]), sample['data']['depth']]  # + [[np.Nan]]  # - how to add None
         input = tuple(input)
         action = np.array([sample['data']['steer'], sample['data']['gas_brake']])
         q = sample['data']['q']
@@ -157,14 +165,14 @@ class ImgsPreprocess(object):
 
 class DepthPreprocess(object):
     def __call__(self, sample):
-        convert = lambda x: x.convert('L')
+        convert = lambda x: x.convert('L').filter(ImageFilter.FIND_EDGES)
         sample['data']['depth'] = load_frames(path=sample['item'][0], sensor='depth',
                                               indexes=to_list(sample['data']['depth_indexes']), convert=convert)
         del sample['data']['depth_indexes']
         sample['data']['depth'] = np.concatenate([img.reshape(1, img.shape[0], img.shape[1])
                                                   for img in sample['data']['depth']], axis=2) / 255.
-        #Further preprocessing
 
+        sample['data']['depth'] = sample['data']['depth'] - sample['data']['depth'].mean()
 
         return sample
 
@@ -182,9 +190,9 @@ class SimpleDataset(Dataset):
         assert isinstance(ids, (list, tuple, type(np.array([])))), 'Ids should be an array of tuples (dir,  step)'
         assert isinstance(ids[0], (list, tuple, type(np.array([])))) and len(ids[0]) == 2, 'Element of ids should be an array, list or tuple containing 2 elements'
 
-        for idx in [random.randint(0, len(ids)) for i in range(len(ids) % batch_size)]:
-            ids.pop(idx)
-        self.ids = ids
+        # for idx in [random.randint(0, len(ids)) for i in range(len(ids) % batch_size)]:
+        #     ids.pop(idx)
+        self.ids = ids[:-(len(ids) % batch_size)] if ((len(ids) % batch_size) != 0) else ids
         self.dfs = list(set([id[0] for id in ids]))
         self.dfs = {directory:pd.read_csv(f'{directory}/episode_info.csv') for directory in self.dfs}
         self.features = features + list(filter(lambda x: len(x) > 1, ['depth_indexes'*depth, 'rgb_indexes'*rgb]))

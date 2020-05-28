@@ -51,6 +51,7 @@ def calc_azimuth(pointA:tuple, pointB:tuple) -> float:
 
     return alpha
 
+
 def to_vehicle_control_discreet(gas_brake:float, steer:float) -> carla.VehicleControl:
     #TODO think about it
     '''
@@ -87,6 +88,12 @@ def to_vehicle_control(gas_brake:float, steer:float) -> carla.VehicleControl:
     else:
         return carla.VehicleControl(throttle=-2*gas_brake-1, steer=-steer, reverse=True)
 
+
+def control_to_gas_brake(control:carla.VehicleControl):
+    if control.reverse:
+        return -control.throttle
+
+    return [control.throttle, -control.brake][np.argmax([control.throttle, control.brake])]
 
 def set_spectator_above_actor(spectator:carla.Actor, transform:np.array) -> None:
     '''

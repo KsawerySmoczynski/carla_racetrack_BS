@@ -1,6 +1,6 @@
 import os
 
-from PIL import Image
+from PIL import Image, ImageFilter
 import numpy as np
 import pandas as pd
 import carla
@@ -11,10 +11,8 @@ from tensorboardX import SummaryWriter
 from config import IMAGE_DOWNSIZE_FACTOR, DATE_TIME, GAMMA
 from spawn import location_to_numpy, calc_azimuth
 
-
 to_array = lambda img: np.asarray(img.raw_data, dtype=np.int8).reshape(img.height, img.width, 4)  # 4 because image is in BRGB format
 to_rgb_resized = lambda img: img[..., :3][::IMAGE_DOWNSIZE_FACTOR, ::IMAGE_DOWNSIZE_FACTOR, ::-1]  # making it RGB from BRGB with [...,:3][...,::-1]
-
 
 def closest_checkpoint(actor:carla.Vehicle, checkpoints:np.array):
     actor_location = location_to_numpy(actor.get_location())
@@ -49,7 +47,7 @@ def calc_distance(actor_location:np.array, points_3D:np.array, cut:float=0.02) -
     points_deltas = np.diff(points_3D[skip:], axis=0)
     distance = actor_to_point + np.sqrt((points_deltas**2).sum(axis=1)).sum()
 
-    return distance
+    return round(distance, 4)
 
 
 def visdom_initialize_windows(viz:visdom.Visdom, title:str, sensors:dict, location):
@@ -158,7 +156,8 @@ def init_reporting(path:str, sensors:dict) -> None:
     if 'collisions' in sensors.keys():
         sensors_header = f'{sensors_header},collisions'
     header = f'{header},{sensors_header}'
-    header = f'{header},velocity,velocity_vec,yaw,location,distance_2finish,steer,gas_brake,reward\n'
+    # header = f'{header},velocity,velocity_vec,yaw,location,distance_2finish,steer,gas_brake,reward\n'
+    header = f'{header},state_steer,state_gas_brake,velocity,velocity_vec,yaw,location,distance_2finish,steer,gas_brake,reward\n'
 
     with open(f'{path}/episode_info.csv', 'w+') as file:
         file.write(header)
@@ -190,25 +189,6 @@ def update_Qvals(path:str) -> None:
     df = pd.read_csv(f'{path}/episode_info.csv')
     df['q'] = [sum(df['reward'][i:]) for i in range(df.shape[0])]
     df.to_csv(f'{path}/episode_info.csv', index=False)
-
-
-def rgb2gray_array(rgb_array):
-    '''
-    Converts array of rgb imgs
-    :param rgb_array:
-    :return:
-    '''
-    return np.array([rgb2gray(img) for img in rgb_array], dtype=rgb_array[0].dtype)
-
-
-def rgb2gray(rgb):
-    '''
-    Converts rgb img or array of rgb imgs to
-    :param rgb: np.array shape=(3,w, h)
-    :return: depth: np.array shape=(1, w, h)
-    '''
-    coeffs = np.array([0.2125, 0.7154, 0.0721], dtype=rgb.dtype)
-    return rgb @ coeffs
 
 
 def plot_gray(img):

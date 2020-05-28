@@ -1,13 +1,22 @@
+#Plan po licencjacie
+* ogarnąć bajzel
+* zrobić refactoring
+* usunąć niepotrzebne importy i przeczyścić strukturę
+
 # Plan na najbliższy czas
-     * skrypt do oceny sumarycznej nagrody z episodu każdego aktora, gdy średnia nagroda jest niższa niż 0.01 to usuwamy pliki takiego episodu, że nie brało ich jako buffer 
-    
+* Uspójnij sposób zapisywania map głebokościowych i konwersję, może nie trzeba tego robić po stronie sieci czy w trakcie wczytywania
+* Uealastycznij metodę _realase_data tak, żeby agent mógł przechowywać w pamięci więcej klatek, a zapis dokonywał się całym chunkiem na raz
+* Dodaj aktualne ustawienie kół i gaz do stanu, pomyśl jak zmienić dane i wygeneruj dataset
+* Pomyśl jakie mamy dataflow wokoł nauki offline i jakie bedziemy mieli online i co z tego da się ze sobą połączyć
+* Ogarnij bajzel między klasami
+   
 ## Uczymy sieć na mpc
-    - Przeczytaj train_on_depth (https://github.com/asap-report/carla/tree/racetrack/PythonClient/racetrack)! -> jego sieć prognozuje trasę, to nie jest reinforcement, 
-    dowiedz się jak przetworzyć ciągłe wartości na wartości akcji w dqn. -> papiery które Jacek przeczytał. 
-    - Trenujemy na 4 torach i testujemy na 2
-    - Okręślamy hiperparametry
-    - Zapisujemy najlepszy model
-    - spójrz na mechanizm weights -> gradient się poprostu bardziej liczy
+- Przeczytaj train_on_depth (https://github.com/asap-report/carla/tree/racetrack/PythonClient/racetrack)! -> jego sieć prognozuje trasę, to nie jest reinforcement, 
+dowiedz się jak przetworzyć ciągłe wartości na wartości akcji w dqn. -> papiery które Jacek przeczytał. 
+- Trenujemy na 4 torach i testujemy na 2
+- Okręślamy hiperparametry
+- Zapisujemy najlepszy model
+- spójrz na mechanizm weights -> gradient się poprostu bardziej liczy
 
 # Done 
 ## Stworzenie MPC jeżdżącego po torze
@@ -23,6 +32,9 @@
 * Visdom -> do wizualizacji obrazów i lokalizacji auta na torze. Nie powielać informacji, wysyłać zapisane z dysku na front. Jak się nie uda to przemyśleć jak uprościć model
 * Puścić MPC model w każdej konfiguracji i zapisać wszystkie informacje 
 * Napisać skrypt do visdom który na podstawie danych spływających serwer prowadziłby logowanie.
+
+* Sieci DDPG aktor i krytyk
+* Customowe datasety z odpowiednimi transformacjami
 
 # Inne
 
@@ -69,3 +81,4 @@ Potencjalne problemy z f. celu:
     Taki action space nie jest idealny, ale jest nieduży i pozwala na zrobienie większości manewrów
     
     Przy użyciu takiego action space możemy użyć sobie DQN i może się przeuczy wszystko fajnie.
+
