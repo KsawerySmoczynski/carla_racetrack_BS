@@ -20,28 +20,22 @@ from net.utils import get_paths, DepthPreprocess, ToSupervised, SimpleDataset, u
 # https://towardsdatascience.com/deep-learning-model-training-loop-e41055a24b73
 # https://towardsdatascience.com/the-false-promise-of-off-policy-reinforcement-learning-algorithms-c56db1b4c79a
 
-#1. Load data indices
-#2. Choose indices for train and test
-#3. Shuffle indices and prepare for batching
-#4. Initialize nets and optimizers
-#5. Start looping
-#       5.1 Load in memory one epoch batches batchsize = 64, epoch=128batches
-#       equals to 8192 steps of simulation it means roughly 32768 frames.
-#       We'll take one in memory epoch.
-#       5.2 Feed batches calculate losses and make step after n=?? batches
-#       5.3 Write data to tensorboard and save net if its best epoch
+# 5.3 Write data to tensorboard and save net if its best epoch
 
 
+#BASH
+#for map in 'circut_spa' 'RaceTrack' 'RaceTrack2'; do for car in 0 1 2; do for speed in 150 110 90 60; do echo $car $speed $map; done; done; done;
 
+#TODO tensorboard
 def main(args):
 
     device = torch.device('cuda:0')
-    no_epochs = 2
+    no_epochs = 10
     batch_size = 64
 
     #Get train test paths -> later on implement cross val
     steps = get_paths(as_tuples=True, shuffle=True)
-    steps_train, steps_test = steps[:int(len(steps)*.8)], steps[int(len(steps)*.8):]
+    steps_train, steps_test = steps[:int(len(steps)*.8)], steps[int(len(steps)*.2):]
 
     dataset_train = SimpleDataset(steps_train, batch_size=batch_size, transform=transforms.Compose([DepthPreprocess(), ToSupervised()]))
     dataset_test = SimpleDataset(steps_test, batch_size=batch_size, transform=transforms.Compose([DepthPreprocess(), ToSupervised()]))
@@ -60,11 +54,11 @@ def main(args):
     critic_optimizer = torch.optim.Adam(critic_net.parameters(), lr=0.001)
 
     #Loss function
-    loss_function = torch.nn.MSELoss(reduction='sum')
+    loss_function = torch.nn.MSELoss(reduction='none')
+    test_loss = torch.nn.MSELoss(reduction='sum')
 
-    dataset_test = iter(dataset_test) #TODO delete, only for debugging
     for epoch_idx in range(no_epochs):
-        # actor_running_loss = .0
+        actor_running_loss = .0
         critic_running_loss = .0
         for idx, batch in enumerate(iter(dataset_train)):
             input, action, q = unpack_supervised_batch(batch=batch, device=device)
@@ -77,6 +71,9 @@ def main(args):
 
             actor_loss = loss_function(actor_pred, action)
             critic_loss = loss_function(critic_pred.view(-1), q)
+
+            actor_loss = (actor_loss * (actor_loss / actor_loss.sum())).sum().mean()
+            critic_loss = (critic_loss * (critic_loss / critic_loss.sum())).sum().mean()
 
             actor_loss.backward()
             critic_loss.backward()
@@ -96,16 +93,18 @@ def main(args):
         actor_test_loss = .0
         critic_test_loss = .0
         with torch.no_grad():
-            for idx, batch in enumerate(dataset_test):
+            for idx, batch in enumerate(iter(dataset_test)):
                 if idx > 200:
                     break
                 input, action, q = unpack_supervised_batch(batch=batch, device=device)
                 actor_pred = actor_net(input)
                 critic_pred = critic_net((action, *input))
-                actor_loss = loss_function(actor_pred, action)
+                actor_loss = test_loss(actor_pred, action)
+                critic_loss = test_loss(critic_pred.view(-1), q)
                 actor_test_loss += actor_loss.item()
-                critic_loss = loss_function(critic_pred.view(-1), q)
                 critic_test_loss += critic_loss.item()
+
+
 
         print(f'Actor test loss {(actor_test_loss/200):.3f}')
         print(f'Critic test loss {(critic_test_loss/200):.3f}')
