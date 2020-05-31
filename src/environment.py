@@ -187,7 +187,6 @@ class Agent:
         Initializes sensors based on intial sensor dict loaded from config
         :return: None
         '''
-        #TODO normalization of frames
         if 'depth' in self.sensors.keys():
             self.sensors['depth']['data'] = []
             self.sensors['depth']['actor'] = self.world.spawn_actor(blueprint=self.sensors['depth']['blueprint'],

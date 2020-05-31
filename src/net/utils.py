@@ -48,7 +48,8 @@ def get_paths(path:str='../data/experiments', sensors:dict=SENSORS, as_tuples:bo
     sensors_config = '_'.join([sensor*value for sensor, value in sensors.items()])
     paths = [f'{root}/{dir}' for root, dirs, files in os.walk(path) for dir in dirs if sensors_config in dir]
     paths = [path for path in paths if 'q' in pd.read_csv(f"{path}/episode_info.csv", nrows=1).columns]
-    paths = [path for path in paths if tag in path]
+    if tag:
+        paths = [path for path in paths if tag in path]
     steps = {path:max([int(frame.split('_')[-1][:-4]) for frame in os.listdir(f'{path}/sensors')]) for path in paths}
     # dataframes = {path: pd.read_csv(f'{path}/episode_info.csv') for path in max_draw.keys() for path in paths} if dfs else None
     if as_tuples:

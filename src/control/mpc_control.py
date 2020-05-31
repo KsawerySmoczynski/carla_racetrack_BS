@@ -61,7 +61,7 @@ class MPCController(Controller):
         self.consec_steer_coeff = 50
 
         # Front wheel L
-        self.Lf = 2.5  # TODO: check if true
+        self.Lf = 2.5
 
         # How the polynomial fitting the desired curve is fitted
         self.steps_poly = 30
@@ -278,7 +278,6 @@ class MPCController(Controller):
         # ]
 
     def minimize_cost(self, bounds, x0, init):
-        # TODO: this is a bit retarded, but hey -- that's scipy API's fault ;)
         for constr_func in self.constr_funcs:
             constr_func['args'] = init
 

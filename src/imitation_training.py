@@ -27,15 +27,15 @@ from net.utils import get_paths, DepthPreprocess, ToSupervised, SimpleDataset, u
 
 def main(args):
 
-    tag = 'depth'
+    tag = None
     device = torch.device('cuda:0')
 
-    no_epochs = 3
+    no_epochs = args.epochs
     batch_size = 128
     depth_shape = [1, 60, 320]
 
-    linear_hidden = 256
-    conv_hidden = 64
+    linear_hidden = args.linear
+    conv_hidden = args.conv
 
     #Get train test paths -> later on implement cross val
     steps = get_paths(as_tuples=True, shuffle=True, tag=tag)
@@ -61,16 +61,20 @@ def main(args):
     # save path
     net_path = f'../data/models/{DATE_TIME}/{net.name()}'
     os.makedirs(net_path, exist_ok=True)
-    optim_steps = 16
+    optim_steps = args.optim_steps
     logging_idx = int(len(dataset_train.dataset) / (batch_size * optim_steps))
 
     writer_train = SummaryWriter(f'{net_path}/train', max_queue=30, flush_secs=5)
     writer_test = SummaryWriter(f'{net_path}/test', max_queue=1, flush_secs=20)
 
     #Optimizers
-    optimizer = torch.optim.Adam(net.parameters(), lr=0.003, weight_decay=0.4)
+    optimizer = torch.optim.Adam(net.parameters(), lr=0.002, weight_decay=0.2)
 
-    scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=optim_steps, T_mult=2)
+    if args.scheduler is 'cos':
+        scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=optim_steps, T_mult=1)
+    else:
+        scheduler = OneCycleLR(optimizer, max_lr=0.002, epochs=no_epochs,
+                                            steps_per_epoch=optim_steps)
 
     #Loss function
     loss_function = torch.nn.MSELoss(reduction='none')
@@ -175,15 +179,44 @@ def train(input:list, label:torch.Tensor, net:nn.Module, optimizer:torch.optim.O
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser()
     argparser.add_argument(
-        '-s', '--num_steps',
-        default=10000,
+        '-e', '--epochs',
+        default=2,
         type=int,
-        dest='num_steps',
-        help='Max number of steps per episode, if set to "None" episode will run as long as termiination conditions aren\'t satisfied')
+        dest='epochs',
+        help='Max number of epochs')
+
+    argparser.add_argument(
+        '-c', '--conv',
+        default=64,
+        type=int,
+        dest='conv',
+        help='Conv hidden size')
+
+    argparser.add_argument(
+        '-l', '--linear',
+        default=128,
+        type=int,
+        dest='linear',
+        help='Linear hidden size')
+
+    argparser.add_argument(
+        '--optim_steps',
+        default=16,
+        type=int,
+        dest='optim_steps',
+        help='Number of optimization steps')
+
+    argparser.add_argument(
+        '--scheduler',
+        default='one_cycle',
+        dest='scheduler',
+        help='Number of optimization steps')
+
 
     args = argparser.parse_known_args()
     if len(args) > 1:
         args = args[0]
+
     try:
         main(args)
     except KeyboardInterrupt:

@@ -25,9 +25,9 @@ class DDPG(torch.nn.Module):
 
         #Num inputs to szerokość
         super(DDPG, self).__init__()
-        self.conv_depth = nn.Conv2d(depth_shape[0], conv_hidden, 5, stride=1, padding=2)
-        self.conv_depth2 = nn.Conv2d(conv_hidden, int(conv_hidden*2), 3, stride=1, padding=1)
-        self.conv_depth3 = nn.Conv2d(int(conv_hidden*2), int(conv_hidden), 2, stride=1, padding=1)
+        self.conv_depth = nn.Conv2d(depth_shape[0], int(conv_hidden/4), 3, stride=1, padding=2)
+        self.conv_depth2 = nn.Conv2d(int(conv_hidden/4), int(conv_hidden/2), 3, stride=1, padding=1)
+        self.conv_depth3 = nn.Conv2d(int(conv_hidden/2), int(conv_hidden), 2, stride=1, padding=1)
         self.conv_depth4 = nn.Conv2d(int(conv_hidden), int(conv_hidden), 1, stride=1, padding=1)
         # if list(rgb_shape):
         #     self.conv_rgb = nn.Conv2d(rgb_shape[0], 64, 5, stride=1, padding=2)
@@ -40,9 +40,10 @@ class DDPG(torch.nn.Module):
 
         conv_out_size = self._get_conv_out(depth_shape)
 
-        self.linear = nn.Linear(numeric_shape[0], linear_hidden)
+        self.linear = nn.Linear(numeric_shape[0], int(linear_hidden/2))
         self.linear_conv = nn.Linear(conv_out_size, linear_hidden)
-        self.linear2 = nn.Linear(2*linear_hidden, linear_hidden)
+        self.linear2 = nn.Linear(self.linear_conv.out_features + self.linear.out_features,
+                                 int(linear_hidden/2))
 
         # if list(rgb_shape):
         #     fc2_input += self.conv_rgb2.out_channels
@@ -111,7 +112,7 @@ class DDPGActor(DDPG):
     def __init__(self, depth_shape, numeric_shape, output_shape, rgb:bool=False, rgb_shape:bool=None, cuda:bool=True, linear_hidden:int=256, conv_hidden:int=32):
         super(DDPGActor, self).__init__(depth_shape=depth_shape, numeric_shape=numeric_shape, rgb_shape=rgb_shape,
                                         rgb=rgb, linear_hidden=linear_hidden, conv_hidden=conv_hidden)
-        self.linear3 = nn.Linear(self.linear2.out_features, int(linear_hidden/2))
+        self.linear3 = nn.Linear(self.linear2.out_features, int(linear_hidden/4))
         self.actor_linear = nn.Linear(self.linear3.out_features, output_shape[0])
 
         self.linear3.weight.data = norm_col_init(self.linear3.weight.data, 1.0)
@@ -154,7 +155,7 @@ class DDPGCritic(DDPG):
         super(DDPGCritic, self).__init__(depth_shape=depth_shape, numeric_shape=numeric_shape, rgb_shape=rgb_shape,
                                         rgb=rgb, linear_hidden=linear_hidden, conv_hidden=conv_hidden)
 
-        self.linear_actor = nn.Linear(actor_out_shape[0], linear_hidden)
+        self.linear_actor = nn.Linear(actor_out_shape[0], int(linear_hidden/4))
         self.linear3 = nn.Linear(self.linear_actor.out_features + self.linear2.out_features, int(linear_hidden/2))
         self.critic_linear = nn.Linear(self.linear3.out_features, 1)
 
