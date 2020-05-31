@@ -141,7 +141,6 @@ def run_client(args):
                                                             args=args)
 
 
-
 def run_episode(client:carla.Client, controller:Controller, spawn_points:np.array,
                 writer:SummaryWriter, args) -> (str, dict, dict, list):
     '''

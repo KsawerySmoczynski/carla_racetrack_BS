@@ -131,8 +131,8 @@ def run_client(args):
     spawn_points = df_to_spawn_points(spawn_points_df, n=10000, inverse=False) #We keep it here in order to have one way simulation within one script
 
     # Controller initialization
-    if args.controller is 'MPC':
-        controller = MPCController(target_speed=TARGET_SPEED, steps_ahead=STEPS_AHEAD, dt=0.1)
+    if args.controller is 'NN':
+        controller = NNController()
 
     status, actor_dict, env_dict, sensor_data = run_episode(client=client,
                                                             controller=controller,

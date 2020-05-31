@@ -3,7 +3,7 @@ import argparse
 import os
 
 import numpy as np
-from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR, CosineAnnealingWarmRestarts
 from torch.utils.data import DataLoader
 
 from config import NUMERIC_FEATURES, DEVICE, DATE_TIME
@@ -15,35 +15,30 @@ import torch
 torch.manual_seed(48)
 from torchvision import transforms
 from torch import multiprocessing as mp, nn
+from tensorboardX import SummaryWriter
 
-from net.utils import get_paths, DepthPreprocess, ToSupervised, SimpleDataset, unpack_supervised_batch
+from net.utils import get_paths, DepthPreprocess, ToSupervised, SimpleDataset, unpack_supervised_batch, get_n_params
 
 
 #TODO check how pytorch dataloader works and inherit it to build adhoc loading from disk
 # https://towardsdatascience.com/deep-learning-model-training-loop-e41055a24b73
 # https://towardsdatascience.com/the-false-promise-of-off-policy-reinforcement-learning-algorithms-c56db1b4c79a
 
-# 5.3 Write data to tensorboard and save net if its best epoch
 
-
-#BASH
-#for map in 'circut_spa' 'RaceTrack' 'RaceTrack2'; do for car in 0 1 2; do for speed in 150 110 90 60; do echo $car $speed $map; done; done; done;
-
-#TODO tensorboard
 def main(args):
 
+    tag = 'depth'
     device = torch.device('cuda:0')
 
-    no_epochs = 5
+    no_epochs = 3
     batch_size = 128
     depth_shape = [1, 60, 320]
 
-    linear_hidden = 512
+    linear_hidden = 256
     conv_hidden = 64
 
-
     #Get train test paths -> later on implement cross val
-    steps = get_paths(as_tuples=True, shuffle=True)
+    steps = get_paths(as_tuples=True, shuffle=True, tag=tag)
     steps_train, steps_test = steps[:int(len(steps)*.8)], steps[int(len(steps)*.2):]
 
     dataset_train = SimpleDataset(ids=steps_train, batch_size=batch_size, transform=transforms.Compose([DepthPreprocess(), ToSupervised()]))
@@ -55,86 +50,103 @@ def main(args):
     dataset_test = DataLoader(dataset_test, **dataloader_params)
 
     #Nets
-    actor_net = DDPGActor(depth_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)], output_shape=[2],
-                          linear_hidden=linear_hidden, conv_hidden=conv_hidden)
-    # critic_net = DDPGCritic(actor_out_shape=[2, ], depth_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)],
-    #                         linear_hidden=linear_hidden, conv_hidden=conv_hidden)
+    # net = DDPGActor(depth_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)], output_shape=[2],
+    #                       linear_hidden=linear_hidden, conv_hidden=conv_hidden)
+    net = DDPGCritic(actor_out_shape=[2, ], depth_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)],
+                            linear_hidden=linear_hidden, conv_hidden=conv_hidden)
 
+    print(len(steps))
+    print(net)
+    print(get_n_params(net))
     # save path
-    path = f'../data/models/{DATE_TIME}/{str(actor_net)}'
-    os.makedirs(path, exist_ok=True)
+    net_path = f'../data/models/{DATE_TIME}/{net.name()}'
+    os.makedirs(net_path, exist_ok=True)
     optim_steps = 16
     logging_idx = int(len(dataset_train.dataset) / (batch_size * optim_steps))
 
+    writer_train = SummaryWriter(f'{net_path}/train', max_queue=30, flush_secs=5)
+    writer_test = SummaryWriter(f'{net_path}/test', max_queue=1, flush_secs=20)
+
     #Optimizers
-    actor_optimizer = torch.optim.Adam(actor_net.parameters(), lr=0.001, weight_decay=0.01)
-    # critic_optimizer = torch.optim.Adam(critic_net.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(net.parameters(), lr=0.003, weight_decay=0.4)
 
-    #schedulers
-    # actor_scheduler = CosineAnnealingLR(actor_optimizer, T_max=no_epochs, gamma=0.1)
-    # critic_scheduler = CosineAnnealingLR(actor_optimizer, T_max=no_epochs, gamma=0.1)
-
-    actor_scheduler = OneCycleLR(actor_optimizer, max_lr=0.005, epochs=no_epochs, steps_per_epoch=optim_steps)
-    # critic_scheduler = OneCycleLR(actor_optimizer, T_max=no_epochs, gamma=0.1)
+    scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=optim_steps, T_mult=2)
 
     #Loss function
     loss_function = torch.nn.MSELoss(reduction='none')
-    test_loss = torch.nn.MSELoss(reduction='sum')
+    test_loss_function = torch.nn.MSELoss(reduction='sum')
 
-    actor_best_train_loss = 1e10
-    actor_best_test_loss = 1e10
+    best_train_loss = 1e10
+    best_test_loss = 1e10
 
     for epoch_idx in range(no_epochs):
-        actor_running_loss = .0
+        train_loss = .0
+        running_loss = .0
         # critic_running_loss = .0
         avg_max_grad = 0.
         avg_avg_grad = 0.
         for idx, batch in enumerate(iter(dataset_train)):
+            global_step = ((len(dataset_train.dataset) / batch_size * epoch_idx) + idx)
             input, action, q = unpack_supervised_batch(batch=batch, device=device)
 
-            actor_loss, actor_grad = train(input=input, label=action, net=actor_net, optimizer=actor_optimizer, loss_fn=loss_function)
-            # critic_loss, critic_grad = train(input=(action, *input), label=q, net=critic_net, optimizer=critic_optimizer, loss_fn=loss_function)
+            # loss, loss_mean, grad = train(input=input, label=action, net=net, optimizer=optimizer, loss_fn=loss_function)
+            loss, loss_mean, grad = train(input=(action, *input), label=q, net=net, optimizer=optimizer, loss_fn=loss_function)
 
-            avg_max_grad += max([element.max() for element in actor_grad])
-            avg_avg_grad += sum([element.mean() for element in actor_grad]) / len(actor_grad)
+            avg_max_grad += max([element.max() for element in grad])
+            avg_avg_grad += sum([element.mean() for element in grad]) / len(grad)
 
-            actor_running_loss += (actor_loss.item())
-            # critic_running_loss += critic_loss.item()
+            running_loss += loss_mean.item()
+            train_loss += loss_mean.item()
+
+            writer_train.add_scalar(tag=f'{net.name()}/running_loss',
+                                          scalar_value=loss_mean.item(),
+                                          global_step=global_step)
+            writer_train.add_scalar(tag=f'{net.name()}/max_grad', scalar_value=avg_max_grad,
+                                          global_step=global_step)
+            writer_train.add_scalar(tag=f'{net.name()}/mean_grad', scalar_value=avg_avg_grad,
+                                          global_step=global_step)
 
             if idx % logging_idx == logging_idx-1:
-                print(f'Actor Epoch: {epoch_idx + 1}, Batch: {idx+1}, Loss: {actor_running_loss/50}, Lr: {actor_scheduler.get_last_lr()}')
-                # print(f'Actor Avg Grad: {avg_avg_grad / (idx+1)}, Max Avg Grad: {avg_max_grad / (idx+1)}')
-                # print(f'Critic Epoch: {epoch_idx + 1}, Batch: {idx+1}, Loss: {critic_running_loss/50}')
-                if (actor_running_loss/50) < actor_best_train_loss:
-                    actor_best_train_loss = actor_running_loss/50
-                    torch.save(actor_net.state_dict(), f'{path}_train.pt')
-                actor_running_loss = 0.0
+                print(f'Actor Epoch: {epoch_idx + 1}, Batch: {idx+1}, Loss: {running_loss/logging_idx}, Lr: {scheduler.get_last_lr()[0]}')
+                if (running_loss/logging_idx) < best_train_loss:
+                    best_train_loss = running_loss/logging_idx
+                    torch.save(net.state_dict(), f'{net_path}/train.pt')
+
+                writer_train.add_scalar(tag=f'{net.name()}/lr', scalar_value=scheduler.get_last_lr()[0],
+                                              global_step=global_step)
+                running_loss = 0.0
                 # critic_running_loss = 0.0
                 avg_max_grad = 0.
                 avg_avg_grad = 0.
+                scheduler.step()
 
-                actor_scheduler.step()
-        print(f'actor_best_train_loss - {actor_best_train_loss}')
-
-        actor_test_loss = .0
+        print(f'Actor best train loss for epoch {epoch_idx+1} - {best_train_loss}')
+        writer_train.add_scalar(tag=f'{net.name()}/global_loss', scalar_value=train_loss/len(dataset_train),
+                                      global_step=(epoch_idx+1))
+        test_loss = .0
         # critic_test_loss = .0
         with torch.no_grad():
             for idx, batch in enumerate(iter(dataset_test)):
                 input, action, q = unpack_supervised_batch(batch=batch, device=device)
-                actor_pred = actor_net(input)
-                # critic_pred = critic_net((action, *input))
-                actor_loss = test_loss(actor_pred, action)
-                # critic_loss = test_loss(critic_pred.view(-1), q)
-                actor_test_loss += actor_loss.item()
-                # critic_test_loss += critic_loss.item()
+                # pred = net(input)
+                pred = net((action, *input))
+                # loss = test_loss_function(pred, action)
+                loss = test_loss_function(pred.view(-1), q)
 
-        if (actor_test_loss / len(dataset_test)) < actor_best_test_loss:
-            actor_best_test_loss = (actor_test_loss / len(dataset_test))
-            torch.save(actor_net.state_dict(), f'{path}_test.pt')
+                test_loss += loss.item()
 
-        print(f'Actor test loss {(actor_test_loss/len(dataset_test)):.3f}')
-        print(f'Actor best test loss {actor_best_test_loss:.3f}')
+        if (test_loss / len(dataset_test)) < best_test_loss:
+            best_test_loss = (test_loss / len(dataset_test))
+            torch.save(net.state_dict(), f'{net_path}_test.pt')
+
+        print(f'Actor test loss {(test_loss/len(dataset_test)):.3f}')
+        print(f'Actor best test loss {best_test_loss:.3f}')
         # print(f'Critic test loss {(critic_test_loss/200):.3f}')
+        writer_test.add_scalar(tag=f'{net.name()}/global_loss', scalar_value=(test_loss/len(dataset_test)),
+                                     global_step=(epoch_idx + 1))
+
+    writer_train.flush()
+    writer_test.flush()
 
 
 def train(input:list, label:torch.Tensor, net:nn.Module, optimizer:torch.optim.Optimizer, loss_fn:torch.nn.MSELoss):
@@ -150,13 +162,14 @@ def train(input:list, label:torch.Tensor, net:nn.Module, optimizer:torch.optim.O
     optimizer.zero_grad()
     y_pred = net(input).view(-1)
     loss = loss_fn(y_pred, label.view(-1))
-    loss = (loss * (loss / loss.sum())).sum().mean()
-    loss.backward()
+    loss_weighted = (loss * (loss / loss.sum())).sum().mean()
+    loss_weighted.backward()
+    nn.utils.clip_grad_value_(net.parameters(), 1.5)
     grad = [p.detach().cpu().abs() for p in net.parameters()]
-    nn.utils.clip_grad_norm_(net.parameters(), 1.)
     optimizer.step()
 
-    return loss, grad
+
+    return loss_weighted, loss.mean(), grad
 
 
 if __name__ == '__main__':

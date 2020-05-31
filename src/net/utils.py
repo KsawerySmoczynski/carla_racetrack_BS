@@ -37,7 +37,8 @@ def weights_init(m, cuda:bool = True):
         m.bias.data.fill_(0)
 
 
-def get_paths(path:str='../data/experiments', sensors:dict=SENSORS, as_tuples:bool=False, shuffle:bool=False) -> dict:
+def get_paths(path:str='../data/experiments', sensors:dict=SENSORS, as_tuples:bool=False,
+              shuffle:bool=False, tag:str=None) -> dict:
     '''
     Method to
     :param path:
@@ -47,6 +48,7 @@ def get_paths(path:str='../data/experiments', sensors:dict=SENSORS, as_tuples:bo
     sensors_config = '_'.join([sensor*value for sensor, value in sensors.items()])
     paths = [f'{root}/{dir}' for root, dirs, files in os.walk(path) for dir in dirs if sensors_config in dir]
     paths = [path for path in paths if 'q' in pd.read_csv(f"{path}/episode_info.csv", nrows=1).columns]
+    paths = [path for path in paths if tag in path]
     steps = {path:max([int(frame.split('_')[-1][:-4]) for frame in os.listdir(f'{path}/sensors')]) for path in paths}
     # dataframes = {path: pd.read_csv(f'{path}/episode_info.csv') for path in max_draw.keys() for path in paths} if dfs else None
     if as_tuples:
@@ -165,14 +167,17 @@ class ImgsPreprocess(object):
 
 class DepthPreprocess(object):
     def __call__(self, sample):
-        convert = lambda x: x.convert('L').filter(ImageFilter.FIND_EDGES)
+        # convert = lambda x: x.convert('L').filter(ImageFilter.FIND_EDGES)
+        convert = lambda x: x.convert('L')
         sample['data']['depth'] = load_frames(path=sample['item'][0], sensor='depth',
                                               indexes=to_list(sample['data']['depth_indexes']), convert=convert)
         del sample['data']['depth_indexes']
+        # sample['data']['depth'] = np.concatenate([img.reshape(1, img.shape[0], img.shape[1])
+        #                                           for img in sample['data']['depth']], axis=2) / 255.
         sample['data']['depth'] = np.concatenate([img.reshape(1, img.shape[0], img.shape[1])
-                                                  for img in sample['data']['depth']], axis=2) / 255.
+                                                  for img in sample['data']['depth']], axis=2)
 
-        sample['data']['depth'] = sample['data']['depth'] - sample['data']['depth'].mean()
+        # sample['data']['depth'] = sample['data']['depth'] - sample['data']['depth'].mean()
 
         return sample
 
