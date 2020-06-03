@@ -13,7 +13,7 @@ from config import IMAGE_DOWNSIZE_FACTOR, FRAMERATE, DATA_PATH, DATE_TIME, SENSO
 from control.abstract_control import Controller
 from spawn import sensors_config, numpy_to_transform, velocity_to_kmh, transform_to_numpy, location_to_numpy, \
     to_vehicle_control, control_to_gas_brake
-from utils import to_rgb_resized, to_array, calc_distance, save_img, init_reporting
+from utils import to_rgb, to_array, calc_distance, save_img, init_reporting
 
 
 # For saving imgs
@@ -196,7 +196,25 @@ class Agent:
                                                   transform=self.sensors['depth']['transform'],
                                                   attach_to=self.actor)
             self.sensors['depth']['actor'].listen(lambda img_raw: (img_raw.convert(self.sensors['depth']['color_converter']), \
-                                                 self.sensors['depth']['data'].append(to_rgb_resized(to_array(img_raw)))))
+                                                 self.sensors['depth']['data'].append(to_rgb(to_array(img_raw)))))
+
+        if 'rgb' in self.sensors.keys():
+            self.sensors['rgb']['data'] = []
+            self.sensors['rgb']['actor'] = self.world.spawn_actor(
+                blueprint=self.sensors['rgb']['blueprint'],
+                transform=self.sensors['rgb']['transform'],
+                attach_to=self.actor
+            )
+            self.sensors['rgb']['actor'].listen(lambda img_raw: self.sensors['rgb']['data'].append(to_rgb(to_array(img_raw))))
+
+        if 'segmentation' in self.sensors.keys():
+            self.sensors['segmentation']['data'] = []
+            self.sensors['segmentation']['actor'] = self.world.spawn_actor(blueprint=self.sensors['segmentation']['blueprint'],
+                                                  transform=self.sensors['segmentation']['transform'],
+                                                  attach_to=self.actor)
+            self.sensors['segmentation']['actor'].listen(lambda img_raw: (img_raw.convert(self.sensors['segmentation']['color_converter']), \
+                                                 self.sensors['segmentation']['data'].append(to_rgb(to_array(img_raw)))))
+
 
         if 'collisions' in self.sensors.keys():
             self.sensors['collisions']['data'] = [0]
@@ -207,16 +225,6 @@ class Agent:
             )
             self.sensors['collisions']['actor'].listen(lambda collision: \
                 self.sensors['collisions']['data'].insert(0, sum(location_to_numpy(collision.normal_impulse))))
-
-
-        if 'rgb' in self.sensors.keys():
-            self.sensors['rgb']['data'] = []
-            self.sensors['rgb']['actor'] = self.world.spawn_actor(
-                blueprint=self.sensors['rgb']['blueprint'],
-                transform=self.sensors['rgb']['transform'],
-                attach_to=self.actor
-            )
-            self.sensors['rgb']['actor'].listen(lambda img_raw: self.sensors['rgb']['data'].append(to_rgb_resized(to_array(img_raw))))
 
         self.sensors_initialized = True
         print('Sensors initialized')

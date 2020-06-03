@@ -23,13 +23,15 @@ INVERSE = False
 VEHICLES = ['vehicle.mini.cooperst']
 
 #Controller config
-IMAGE_DOWNSIZE_FACTOR = 8
+IMAGE_DOWNSIZE_FACTOR = 10
+IMAGE_SIZE = (100,75)
 STEER_BOUNDS = (-1, 1)
 THROTTLE_BOUNDS = (-1,1)
 #Order of sensors in dict is important for the logging purposes
 SENSORS = {
     'depth': True,
     'rgb': True,
+    'segmentation': True,
     'collisions': True,
 }
 

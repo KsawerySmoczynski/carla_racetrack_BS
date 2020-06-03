@@ -8,6 +8,8 @@ from scipy.interpolate import splprep, splev
 from carla import Transform, Location, Rotation
 
 #Easy selfexplaining lambdas
+from config import IMAGE_SIZE
+
 numpy_to_transform = lambda point: Transform(Location(point[0], point[1], point[2]), Rotation(yaw=point[3], pitch=0, roll=0))
 transform_to_numpy = lambda transform: np.array([transform.location.x, transform.location.y, transform.location.z, transform.rotation.yaw])
 numpy_to_location = lambda point: Location(point[0], point[1], point[2])
@@ -108,19 +110,22 @@ def set_spectator_above_actor(spectator:carla.Actor, transform:np.array) -> None
     spectator.set_transform(transform)
 
 
-def sensors_config(blueprint_library:carla.BlueprintLibrary,
-                   depth:bool=True, rgb:bool=False, collisions:bool=True,) -> dict:
+def sensors_config(blueprint_library:carla.BlueprintLibrary,depth:bool=True,
+                   rgb:bool=False, segmentation:bool=False, collisions:bool=True,) -> dict:
     '''
     Configures sensors blueprints, relative localization and transformations related to sensor.
     :param blueprint_library:carla.BlueprintLibrary
     :param depth:bool
     :param collision:bool
     :param rgb:bool
+    :param segmentation:bool
     :return: sensors:dict
     '''
     sensors = {}
     if depth:
-        depth_bp = blueprint_library.find('sensor.camera.depth')
+        depth_bp:carla.ActorBlueprint = blueprint_library.find('sensor.camera.depth')
+        depth_bp.set_attribute('image_size_x', f'{IMAGE_SIZE[0]}')
+        depth_bp.set_attribute('image_size_y', f'{IMAGE_SIZE[1]}')
         depth_relative_transform = carla.Transform(carla.Location(1.4, 0, 1.4), carla.Rotation(-5., 0, 0))
         cc = carla.ColorConverter.LogarithmicDepth
         sensors['depth'] = {'blueprint': depth_bp,
@@ -129,19 +134,32 @@ def sensors_config(blueprint_library:carla.BlueprintLibrary,
 
     if rgb:
         rgb_bp = blueprint_library.find('sensor.camera.rgb')
+        rgb_bp.set_attribute('image_size_x', f'{IMAGE_SIZE[0]}')
+        rgb_bp.set_attribute('image_size_y', f'{IMAGE_SIZE[1]}')
         rgb_relative_transform = carla.Transform(carla.Location(1.4, 0, 1.4), carla.Rotation(-5., 0, 0))
         sensors['rgb'] = {
             'blueprint': rgb_bp,
-            'transform': rgb_relative_transform,
-                                    }
+            'transform': rgb_relative_transform}
+
+    if segmentation:
+        segmentation_bp = blueprint_library.find('sensor.camera.semantic_segmentation')
+        segmentation_bp.set_attribute('image_size_x', f'{IMAGE_SIZE[0]}')
+        segmentation_bp.set_attribute('image_size_y', f'{IMAGE_SIZE[1]}')
+        segmentation_relative_transform = carla.Transform(carla.Location(1.4, 0, 1.4), carla.Rotation(-5., 0, 0))
+        cc = carla.ColorConverter.CityScapesPalette
+        sensors['segmentation'] = {
+            'blueprint': segmentation_bp,
+            'transform': segmentation_relative_transform,
+            'color_converter': cc}
 
     if collisions:
         collision_bp = blueprint_library.find('sensor.other.collision')
         collision_relative_transform = carla.Transform(carla.Location(0, 0, 0), carla.Rotation(0, 0, 0))
+
         sensors['collisions'] = {
             'blueprint': collision_bp,
-            'transform': collision_relative_transform
-                                }
+            'transform': collision_relative_transform,
+                                        }
 
     return sensors
 

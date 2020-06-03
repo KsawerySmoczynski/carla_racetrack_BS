@@ -8,11 +8,14 @@ import visdom
 from matplotlib import pyplot as plt
 from tensorboardX import SummaryWriter
 
-from config import IMAGE_DOWNSIZE_FACTOR, DATE_TIME, GAMMA
+from config import IMAGE_DOWNSIZE_FACTOR, DATE_TIME, IMAGE_SIZE
 from spawn import location_to_numpy, calc_azimuth
 
+to_rgb_pil = lambda img: Image.frombuffer(mode='RGBA', size=IMAGE_SIZE, data=img.raw_data.tobytes()).convert('RGB')
 to_array = lambda img: np.asarray(img.raw_data, dtype=np.int8).reshape(img.height, img.width, 4)  # 4 because image is in BRGB format
-to_rgb_resized = lambda img: img[..., :3][::IMAGE_DOWNSIZE_FACTOR, ::IMAGE_DOWNSIZE_FACTOR, ::-1]  # making it RGB from BRGB with [...,:3][...,::-1]
+to_rgb = lambda img: img[..., :3][..., ::-1]  # making it RGB from BRGB with [...,:3][...,::-1]
+to_resize = lambda img: img[..., :3][::IMAGE_DOWNSIZE_FACTOR, ::IMAGE_DOWNSIZE_FACTOR, ::-1]  # making it RGB from BRGB with [...,:3][...,::-1]
+
 
 def closest_checkpoint(actor:carla.Vehicle, checkpoints:np.array):
     actor_location = location_to_numpy(actor.get_location())
