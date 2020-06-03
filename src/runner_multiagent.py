@@ -1,3 +1,4 @@
+import json
 import time
 import argparse
 import numpy as np
@@ -15,7 +16,7 @@ from tensorboardX import SummaryWriter
 
 #Configs
 from config import DATA_PATH, FRAMERATE, TENSORBOARD_DATA, GAMMA, \
-    DATE_TIME, SENSORS, VEHICLES, CARLA_IP, MAP, INVERSE, NO_AGENTS, NEGATIVE_REWARD
+    DATE_TIME, SENSORS, VEHICLES, CARLA_IP, MAP, INVERSE, NO_AGENTS, NEGATIVE_REWARD, DATA_POINTS
 
 from utils import tensorboard_log, visdom_log, visdom_initialize_windows, init_reporting, save_info, update_Qvals
 
@@ -56,17 +57,30 @@ def main():
         help='Avialable maps: "circut_spa", "RaceTrack", "Racetrack2". Default: "circut_spa"')
 
     argparser.add_argument(
+        '--inverse',
+        default=False,
+        type=bool,
+        help='Inverts the track')
+
+    argparser.add_argument(
         '--vehicle',
         metavar='V',
         default=0,
         type=int,
         dest='vehicle',
-        help='Carla Vehicle blueprint, choose with integer. Avialable: ["vehicle.dodge_charger.police", "vehicle.mustang.mustang", "vehicle.tesla.model3", "vehicle.audi.etron"] Default: "vehicle.dodge_charger.police"')
+        help=f'Carla Vehicle blueprint, choose with integer. Avialable: {VEHICLES}')
 
     # Simulation
     argparser.add_argument(
+        '-e', '--episodes',
+        default=1,
+        type=int,
+        dest='episodes',
+        help='Number of episodes')
+
+    argparser.add_argument(
         '-s', '--num_steps',
-        default=10000,
+        default=5000,
         type=int,
         dest='num_steps',
         help='Max number of steps per episode, if set to "None" episode will run as long as termiination conditions aren\'t satisfied')
@@ -114,43 +128,27 @@ def main():
 
 
 def run_client(args):
-    # args = main()
+
     args.host = 'localhost'
     args.port = 2000
 
-    args.tensorboard = False
-    writer = None
-    if args.controller == 'MPC':
-        TARGET_SPEED = args.speed
-        STEPS_AHEAD = args.steps_ahead
-        if args.tensorboard:
-            writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_TS{TARGET_SPEED}_H{STEPS_AHEAD}_FRAMES{args.frames}_{DATE_TIME}',
-                                   flush_secs=5, max_queue=5)
-    elif args.tensorboard:
-        writer = SummaryWriter(f'{TENSORBOARD_DATA}/{args.controller}/{args.map}_FRAMES{args.frames}', flush_secs=5)
-
-    # Connecting to client -> later package it in function which checks if the world is already loaded and if the settings are the same.
-    # In order to host more scripts concurrently
     client = configure_simulation(args)
-
-    # load spawnpoints from csv -> generate spawn points from notebooks/20200414_setting_points.ipynb
-    spawn_points_df = pd.read_csv(f'{DATA_PATH}/spawn_points/{args.map}.csv')
-    spawn_points = df_to_spawn_points(spawn_points_df, n=10000, inverse=INVERSE) #We keep it here in order to have one way simulation within one script
 
     # Controller initialization - we initialize one controller for n-agents, what happens in multiprocessing.
     if args.controller is 'MPC':
+        TARGET_SPEED = args.speed
+        STEPS_AHEAD = args.steps_ahead
         controller = MPCController(target_speed=TARGET_SPEED, steps_ahead=STEPS_AHEAD, dt=0.1)
 
-    status, actor_dict, env_dict, sensor_data = run_episode(client=client,
-                                                            controller=controller,
-                                                            spawn_points=spawn_points,
-                                                            writer=writer,
-                                                            args=args)
+    for i in range(args.episodes):
+        status, save_paths = run_episode(client=client,
+                                        controller=controller,
+                                        args=args)
 
 
 
-def run_episode(client:carla.Client, controller:Controller, spawn_points:np.array,
-                writer:SummaryWriter, args) -> (str, dict, dict, list):
+
+def run_episode(client:carla.Client, controller:Controller, args) -> (dict, dict):
     '''
     Runs single episode. Configures world and agent, spawns it on map and controlls it from start point to termination
     state.
@@ -168,13 +166,13 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
              array[np.array] -> photos
     '''
     NUM_STEPS = args.num_steps
-
+    spawn_points_df = pd.read_csv(f'{DATA_PATH}/spawn_points/{args.map}.csv')
+    spawn_points = df_to_spawn_points(spawn_points_df, n=10000, inverse=args.inverse)
     environment = Environment(client=client)
     world = environment.reset_env(args)
     agent_config = {'world':world, 'controller':controller, 'vehicle':VEHICLES[args.vehicle],
                     'sensors':SENSORS, 'spawn_points':spawn_points}
     environment.init_agents(no_agents=args.no_agents, agent_config=agent_config)
-    environment.init_vehicles()
     spectator = world.get_spectator()
     spectator.set_transform(numpy_to_transform(
         spawn_points[environment.agents[0].spawn_point_idx-30]))
@@ -184,22 +182,22 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
     #INITIALIZE SENSORS
     environment.initialize_agents_sensors()
 
-    # Release handbrake
-    world.tick()
-    time.sleep(1)
-    environment.initialize_agents_reporting(sensors=SENSORS)
-    save_paths = [agent.save_path for agent in environment.agents]
+    for i in range(DATA_POINTS):
+        world.tick()
 
-    for step in range(NUM_STEPS):  #TODO change to while with conditions
-        #Retrieve state and actions
+    environment.initialize_agents_reporting()
+    for agent in environment.agents:
+        agent._release_control()
+        print(f'{agent} control released')
+    save_paths = [agent.save_path for agent in environment.agents]
+    #TODO dump agent dict as json
+
+    status = dict({str(agent): 'Max steps exceeded' for agent in environment.agents})
+
+    for step in range(NUM_STEPS):
 
         states = [agent.get_state(step, retrieve_data=True) for agent in environment.agents]
-
-        #Apply action
         actions = [agent.play_step(state) for agent, state in zip(environment.agents, states)]
-        # actions.append(action)
-
-        #Transit to next state
         world.tick()
 
         next_states = [{'velocity': agent.velocity,'location': agent.location} for agent in environment.agents]
@@ -211,6 +209,7 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
             if state['distance_2finish'] < 5:
                 print(f'agent {str(agent)} finished the race in {step} steps car {args.vehicle}')
                 save_info(path=agent.save_path, state=state, action=action, reward=0)
+                status[str(agent)] = 'Finished'
                 agent.destroy(data=True)
                 environment.agents.pop(idx)
 
@@ -218,11 +217,13 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
                 print(f'failed, collision {str(agent)} at step {step}, car {args.vehicle}')
                 save_info(path=agent.save_path, state=state, action=action,
                           reward=reward + NEGATIVE_REWARD * (GAMMA ** step))
+                status[str(agent)] = 'Collision'
                 agent.destroy(data=True)
                 environment.agents.pop(idx)
 
         for agent, state, action, reward in zip(environment.agents, states, actions, rewards):
             save_info(path=agent.save_path, state=state, action=action, reward=reward)
+
 
         if len(environment.agents) < 1:
             print('fini')
@@ -231,11 +232,10 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
     for agent_path in save_paths:
         update_Qvals(path=agent_path)
 
+
     world.tick()
 
-    status, actor_dict, env_dict, sensor_data = str, dict, dict, list
-
-    return status, actor_dict, env_dict, sensor_data
+    return status, save_paths
 
 
 if __name__ == '__main__':

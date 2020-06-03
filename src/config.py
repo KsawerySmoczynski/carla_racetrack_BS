@@ -19,6 +19,7 @@ CARLA_IP = config_dict['carla_ip']
 FRAMERATE = 30
 MAP = 'circut_spa'
 INVERSE = False
+DATA_POINTS = 4
 
 VEHICLES = ['vehicle.mini.cooperst']
 
@@ -46,6 +47,6 @@ LEARNING_RATE = 0.001
 NUMBER_OF_EPOCHS = 100
 BATCH_SIZE = 20
 RANDOM_SEED = 42
-EXP_BUFFER = 4
+
 
 #Odwrócony circut spa nie działa

@@ -1,6 +1,7 @@
 import argparse
 import copy
 import datetime
+import json
 import os
 
 import numpy as np
@@ -9,7 +10,7 @@ import torch
 import torch.multiprocessing as mp
 
 #Local imports
-from config import IMAGE_DOWNSIZE_FACTOR, FRAMERATE, DATA_PATH, DATE_TIME, SENSORS, INVERSE
+from config import IMAGE_DOWNSIZE_FACTOR, FRAMERATE, DATA_PATH, DATE_TIME, SENSORS, INVERSE, DATA_POINTS
 from control.abstract_control import Controller
 from spawn import sensors_config, numpy_to_transform, velocity_to_kmh, transform_to_numpy, location_to_numpy, \
     to_vehicle_control, control_to_gas_brake
@@ -20,7 +21,7 @@ from utils import to_rgb, to_array, calc_distance, save_img, init_reporting
 # https://github.com/drj11/pypng/
 
 class Agent:
-    def __init__(self, world:carla.World, controller:Controller, vehicle:str, sensors:dict, spawn_points:np.array, spawn_point_idx:int=None, no_data_points:int=4):
+    def __init__(self, world:carla.World, controller:Controller, vehicle:str, sensors:dict, spawn_points:np.array, spawn_point_idx:int=None, no_data_points:int=DATA_POINTS):
         '''
         All of the default data is stored in the form of numpy array,
         transforms to other formats are performed ad hoc.
@@ -47,6 +48,18 @@ class Agent:
 
     def __str__(self) -> str:
         return f'{self.controller.__class__.__name__}_{"_".join(self.sensors.keys())}_{self.spawn_point_idx}'
+
+    def __dict__(self) -> dict:
+        agent = {'name': str(self),
+                 'map': self.map,
+                 'save_path': self.save_path,
+                 'spawn_point_idx': self.spawn_point_idx,
+                 'no_data_points': self.no_data_points,
+                 'sensors': self.sensors.keys(),
+                 'controller': self.controller.name,
+                 'vehicle': self.actor.id
+                 }
+        return agent
 
     @property
     def save_path(self) -> str:
@@ -137,12 +150,12 @@ class Agent:
         :param sensor:
         :return: list of datapoints
         '''
-        if len(self.sensors[sensor]['data']) < self.no_data_points:
-            data = [self.sensors[sensor]['data'][0] for i in
-                    range(self.no_data_points - len(self.sensors[sensor]['data']))] \
-                   + [frame for frame in self.sensors[sensor]['data']]
-        else:
-            data = self.sensors[sensor]['data'][-self.no_data_points:]
+        # if len(self.sensors[sensor]['data']) < self.no_data_points:
+        #     data = [self.sensors[sensor]['data'][0] for i in
+        #             range(self.no_data_points - len(self.sensors[sensor]['data']))] \
+        #            + [frame for frame in self.sensors[sensor]['data']]
+        # else:
+        data = self.sensors[sensor]['data'][-self.no_data_points:]
         return data
 
     def get_sensor_data_indexes(self, step) -> list:
@@ -151,11 +164,11 @@ class Agent:
         :param step: int, current step
         :return: list of integers
         '''
-        if step < self.no_data_points:
-            indexes = [0 for i in range(self.no_data_points - step)] \
-                   + [idx + 1 for idx in range(step)]
-        else:
-            indexes = [idx for idx in range(step-self.no_data_points, step)]
+        # if step < self.no_data_points:
+        #     indexes = [0 for i in range(self.no_data_points - step)] \
+        #            + [idx + 1 for idx in range(step)]
+        # else:
+        indexes = [idx for idx in range(step, step + self.no_data_points)]
         return indexes
 
     def set_waypoints(self, spawn_points:np.array, spawn_point_idx:int):
@@ -178,10 +191,13 @@ class Agent:
         :return: None
         '''
         if not self.initialized:
-            self.actor:carla.Vehicle = self.world.spawn_actor(self.actor, numpy_to_transform(self.spawn_point))
-            self.actor.apply_control(carla.VehicleControl(brake=1., gear=1))
-            self.initialized = True
-            print('Vehicle initilized')
+            try:
+                self.actor:carla.Vehicle = self.world.spawn_actor(self.actor, numpy_to_transform(self.spawn_point))
+                self.actor.apply_control(carla.VehicleControl(brake=1., gear=1))
+                self.initialized = True
+                print('Vehicle initilized')
+            except:
+                raise Exception('Vehicle not spawned')
         else:
             raise Exception('Vehicle already spawned')
 
@@ -228,8 +244,8 @@ class Agent:
 
         self.sensors_initialized = True
         print('Sensors initialized')
-        self._release_control()
-        print('Control released')
+        # self._release_control()
+        # print('Control released')
 
     def _release_control(self) -> None:
         '''
@@ -246,8 +262,8 @@ class Agent:
         '''
         file = f'{sensor}_{step}.png'
         save_img(img=self.sensors[sensor]['data'][-1], path=f'{self.save_path}/sensors/{file}')
-        if step > self.no_data_points:
-            self.sensors[sensor]['data'].pop(0)
+        # if step > self.no_data_points:
+        self.sensors[sensor]['data'].pop(0)
             #For future buffer change save to bulk save of all data from sensors till [-self.data_points:]
             # self.sensors[sensor]['data'].pop(0)
 
@@ -274,6 +290,7 @@ class Agent:
         :param sensors: dict of sensors from config consisting boolean values
         :return: None
         '''
+
         state = self.get_state(step=0, retrieve_data=False)
 
         # Apply action
@@ -288,6 +305,9 @@ class Agent:
 
         with open(f'{self.save_path}/episode_info.csv', 'w+') as file:
             file.write(header)
+
+        json.dump(dict(self), open(f'{self.save_path}/agent_info.json', 'w+'))
+
         print('Init succesfull')
 
 class Environment:
@@ -333,22 +353,26 @@ class Environment:
         return self.world
 
     def init_agents(self, no_agents:int, agent_config:dict) -> None:
+        '''
+
+        :param no_agents:
+        :param agent_config:
+        :return:
+        '''
         points_len = len(agent_config['spawn_points'])
         spawn_point_indexes = (np.linspace(0, points_len - (points_len/no_agents), no_agents, dtype=np.int) + \
                                np.random.randint(0, points_len)) % points_len
         for idx in spawn_point_indexes:
-            current_agent_config = {**agent_config, 'spawn_point_idx':idx}
-            self.agents.append(Agent(**current_agent_config))
+                current_agent_config = {**agent_config, 'spawn_point_idx':idx}
+                agent = Agent(**current_agent_config)
+                try:
+                    agent.initialize_vehicle()
+                    self.agents.append(agent)
+                except Exception as e:
+                    print(e)
+        self.world.tick()
+        self.world.tick()
 
-    def init_vehicles(self) -> None:
-        '''
-        Carfully, uses world.tick()
-        :return: None
-        '''
-        for agent in self.agents:
-            agent.initialize_vehicle()
-        self.world.tick()
-        self.world.tick()
 
     def stabilize_vehicles(self) -> None:
         '''
@@ -384,13 +408,13 @@ class Environment:
         for agent in self.agents:
             agent.initialize_sensors()
 
-    def initialize_agents_reporting(self, sensors:dict) -> None:
+    def initialize_agents_reporting(self) -> None:
         '''
         Initializes reporting files for every agent.
         :return: None
         '''
         for agent in self.agents:
-            init_reporting(path=agent.save_path, sensors=sensors)
+            agent.init_reporting()
 
     def get_agents_states(self, step:int, retrieve_data:bool=False) -> list:
         '''

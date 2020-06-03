@@ -87,6 +87,10 @@ class MPCController(Controller):
         self.steer = None
         self.throttle = None
 
+    @property
+    def name(self) -> str:
+        return f'{self.__class__.__name__}_ts{self.target}_sa{self.steps_ahead}_dt{self.dt}'
+
     def get_func_constraints_and_bounds(self):
         """The most important method of this class, defining the MPC's cost
         function and constraints.
