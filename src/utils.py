@@ -140,7 +140,6 @@ def save_img(img:np.array, path:str, mode:str='RGB') -> None:
 
 
 def init_reporting(path:str, sensors:dict) -> None:
-    #TODO this method is awful, definitely refactor.
     '''
     Initialize file for logging based on suite of utilized sensors
     :param path:str, path to the experiment folder

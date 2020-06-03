@@ -6,11 +6,12 @@ from torchvision.transforms import transforms
 
 from config import NUMERIC_FEATURES
 from control.abstract_control import Controller
+from net.ddpg_net import DDPGActor, DDPGCritic
 from net.utils import img_to_pil
 
 
 class NNController(Controller):
-    def __init__(self, actor_net:nn.Module, critic_net:nn.Module, features:list=NUMERIC_FEATURES, device:str='cuda:0'):
+    def __init__(self, actor_net:DDPGActor, critic_net:DDPGCritic, features:list=NUMERIC_FEATURES, device:str='cuda:0'):
         super(NNController, self).__init__()
         self.actor_net = actor_net
         self.critic_net = critic_net
@@ -24,34 +25,27 @@ class NNController(Controller):
         :param state:
         :return:
         '''
-        x_numeric = torch.Tensor([state[feature] for feature in self.features]).float().to(self.device)
+        x_numeric = torch.Tensor([state[feature] for feature in self.features]).unsqueeze(0).float().to(self.device)
         imgs = [self.transform(img_to_pil(img)) for img in state['depth_data']]
-        depth = torch.cat(imgs, dim=2).float().to(self.device)
-        depth = depth - depth.mean()
+        depth = torch.cat(imgs, dim=2).unsqueeze(0).float().to(self.device)
+        # depth = depth - depth.mean()
 
         return (x_numeric, depth)
 
     def control(self, state, **kwargs):
         input = self.preprocess(state)
-        action = self.actor_net(input)
-        q_pred = self.critic_net((action, *input))
+        action = self.actor_net(input).view(-1)
+        # q_pred = self.critic_net((action, *input)).view(-1)
 
         action = {
-            'steer': round(action[0], 3),
-            'gas_brake': round(action[1], 3),
-            'q_pred': q_pred
+            'steer': round(float(action[0]), 3),
+            'gas_brake': round(float(action[1]), 3),
+            # 'q_pred': q_pred
         }
 
         return action
 
-def preprocess(state: dict):
-    x_numeric = torch.Tensor([state[feature] for feature in NUMERIC_FEATURES]).float().to(torch.device('cuda:0'))
-    # Konwersja obrazu załadowanego w PIL
-    imgs = [transforms.ToTensor()(img_to_pil(img)) for img in state['depth_data']]
-    depth = torch.cat(imgs, dim=2).float().to(torch.device('cuda:0'))
-    depth = depth - depth.mean()
 
-    return (x_numeric, depth)
 
 
 # Torch multiprocessing

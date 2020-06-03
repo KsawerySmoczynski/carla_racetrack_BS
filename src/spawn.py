@@ -95,6 +95,7 @@ def control_to_gas_brake(control:carla.VehicleControl):
 
     return [control.throttle, -control.brake][np.argmax([control.throttle, control.brake])]
 
+
 def set_spectator_above_actor(spectator:carla.Actor, transform:np.array) -> None:
     '''
     Changes position of the spectator relative to actor position.

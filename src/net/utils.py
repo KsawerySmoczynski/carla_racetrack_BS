@@ -1,4 +1,5 @@
 import ast
+import copy
 import os
 import random
 import torch
@@ -12,7 +13,8 @@ from config import SENSORS, FEATURES_FOR_BATCH, DEVICE, NUMERIC_FEATURES
 
 
 to_list = lambda x: ast.literal_eval(x)
-img_to_pil = lambda img: Image.fromarray(img, 'RGB').convert('L').filter(ImageFilter.FIND_EDGES)
+# img_to_pil = lambda img: Image.fromarray(img, 'RGB').convert('L').filter(ImageFilter.FIND_EDGES)
+img_to_pil = lambda img: Image.fromarray(img, 'RGB').convert('L')
 
 def norm_col_init(weights, std=1.0):
     x = torch.randn(weights.size())
@@ -60,22 +62,6 @@ def get_paths(path:str='../data/experiments', sensors:dict=SENSORS, as_tuples:bo
     return steps
 
 
-def select_batch(paths:dict, states_per_batch:int=32) -> list:
-    '''
-
-    :param paths:
-    :param states_per_batch:
-    :return:
-    '''
-    batch_indexes = []
-    for i in range(states_per_batch):
-        experiment = random.choice(list(paths.keys()))
-        no_state = random.randint(0, paths[experiment])
-        batch_indexes.append((experiment, no_state))
-
-    return batch_indexes
-
-
 def load_frames(path:str, sensor:str, indexes:list, convert=lambda x:x) -> list:
     '''
 
@@ -91,25 +77,6 @@ def load_frames(path:str, sensor:str, indexes:list, convert=lambda x:x) -> list:
         frames.append(img)
 
     return frames
-
-
-def load_batch(states_indexes:list, dataframes:dict):
-    '''
-    Element of batch is a state which goes to the preprocessing net method
-    :param states_indexes:
-    :param dataframes:
-    :return:
-    '''
-    batch = []
-    for path, v in states_indexes:
-        state = dataframes[path].loc[v, FEATURES_FOR_BATCH].to_dict()
-        state = {**state,
-                 'depth':load_frames(path, 'depth', to_list(dataframes[path].loc[v,'depth_indexes'])),
-                 'rgb':load_frames(path, 'rgb', to_list(dataframes[path].loc[v,'rgb_indexes']))}
-
-        batch.append(state)
-
-    return batch
 
 
 def get_n_params(model):
@@ -129,8 +96,9 @@ def unpack_supervised_batch(batch, device=DEVICE):
     :param device:
     :return:
     '''
-    input, action, q = batch
-    return (input[0].float().to(device), input[1].float().to(device)), action.float().to(device), q.float().to(device)
+    for k, v in batch.items():
+        batch[k] = v.float().to(device)
+    return batch
 
 
 class OldToSupervised(object):
@@ -148,12 +116,12 @@ class ToSupervised(object):
     def __init__(self, features:list=NUMERIC_FEATURES):
         self.features = features
     def __call__(self, sample):
-        input = [np.array([sample['data'][data] for data in self.features]), sample['data']['depth']]  # + [[np.Nan]]  # - how to add None
-        input = tuple(input)
+        x_numeric = np.array([sample['data'][data] for data in self.features])
+        depth = sample['data']['depth']
         action = np.array([sample['data']['steer'], sample['data']['gas_brake']])
         q = sample['data']['q']
 
-        return (input, action, q)
+        return {'x_numeric':x_numeric, 'depth':depth, 'action':action, 'q':q}
 
 
 class ToReinforcement(object):
@@ -295,7 +263,10 @@ class BufferedAdHocDataset(Dataset):
 
     def __getitem__(self, item_idx):
 
-        return self.buffer[item_idx]
+        data = self.dfs[self.ids[item_idx][0]].loc[self.ids[item_idx][1], self.features].to_dict()
+        sample = {'item': self.ids[item_idx], 'data': data}
+
+        return self.transform(sample)
 
     def populate(self, n:int=1):
         '''
@@ -324,4 +295,28 @@ class BufferedAdHocDataset(Dataset):
         return self.buffer[np.random.randint(0, len(self), size=(batch_size))]
 
 
+class TargetNet:
+    """
+    Class borrowed from ptan library: https://github.com/Shmuma/ptan/blob/master/ptan/agent.py
+    Wrapper around model which provides copy of it instead of trained weights
+    """
+    def __init__(self, model):
+        self.model = model
+        self.target_model = copy.deepcopy(model)
+
+    def sync(self):
+        self.target_model.load_state_dict(self.model.state_dict())
+
+    def alpha_sync(self, alpha):
+        """
+        Blend params of target net with params from the model
+        :param alpha:
+        """
+        assert isinstance(alpha, float)
+        assert 0.0 < alpha <= 1.0
+        state = self.model.state_dict()
+        tgt_state = self.target_model.state_dict()
+        for k, v in state.items():
+            tgt_state[k] = tgt_state[k] * alpha + (1 - alpha) * v
+        self.target_model.load_state_dict(tgt_state)
 

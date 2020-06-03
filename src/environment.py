@@ -1,5 +1,7 @@
 import argparse
 import copy
+import datetime
+import os
 
 import numpy as np
 import carla
@@ -33,9 +35,8 @@ class Agent:
         self.world = world
         self.map = world.get_map().name
         self.actor:carla.Vehicle = self.world.get_blueprint_library().find(vehicle)
+        self.date_time = datetime.datetime.now().strftime("%Y%m%d_%H%M")
         self.controller = controller
-        # self.sensors = sensors_config(self.world.get_blueprint_library(), depth=sensors['depth'],
-        #                               collision=sensors['collisions'], rgb=sensors['rgb'])
         self.sensors = sensors_config(self.world.get_blueprint_library(), **sensors)
         self.spawn_point_idx = spawn_point_idx or int(np.random.randint(len(spawn_points)))
         self.spawn_point = spawn_points[self.spawn_point_idx]
@@ -49,7 +50,7 @@ class Agent:
 
     @property
     def save_path(self) -> str:
-        return f'{DATA_PATH}/experiments/{self.map}{"_inverse"*INVERSE}/{DATE_TIME}/{self.__str__()}'
+        return f'{DATA_PATH}/experiments/{self.map}{"_inverse"*INVERSE}/{self.date_time}/{self.__str__()}'
 
     @property
     def transform(self):
@@ -111,8 +112,10 @@ class Agent:
             if retrieve_data:
                 data = self.get_sensor_data(sensor)
                 state[f'{sensor}_data'] = data
+                self._release_data(sensor=sensor, step=state['step'])
 
-        state['collisions'] = sum(self.sensors['collisions']['data'])
+        collision = sum(self.sensors['collisions']['data'])
+        state['collisions'] = collision if collision > 2_000 else 0
         control = self.actor.get_control()
         state['state_steer'] = control.steer
         state['state_gas_brake'] = control_to_gas_brake(control)
@@ -124,7 +127,7 @@ class Agent:
                                                   points_3D=self.waypoints)
 
 
-        self._release_data(state['step'])
+
 
         return state
 
@@ -196,14 +199,14 @@ class Agent:
                                                  self.sensors['depth']['data'].append(to_rgb_resized(to_array(img_raw)))))
 
         if 'collisions' in self.sensors.keys():
-            self.sensors['collisions']['data'] = []
+            self.sensors['collisions']['data'] = [0]
             self.sensors['collisions']['actor'] = self.world.spawn_actor(
                 blueprint=self.sensors['collisions']['blueprint'],
                 transform=self.sensors['collisions']['transform'],
                 attach_to=self.actor
             )
             self.sensors['collisions']['actor'].listen(lambda collision: \
-                                                           self.sensors['collisions']['data'].append(isinstance(collision.normal_impulse, carla.Vector3D)))
+                self.sensors['collisions']['data'].insert(0, sum(location_to_numpy(collision.normal_impulse))))
 
 
         if 'rgb' in self.sensors.keys():
@@ -227,20 +230,18 @@ class Agent:
         '''
         self.actor.apply_control(carla.VehicleControl(throttle=0., brake=0., gear=1))
 
-    def _release_data(self, step: int) -> None:
+    def _release_data(self, sensor:str, step: int) -> None:
         '''
         Private method which saves sensor data to the disk and releases memory.
         :param step:
         :return: None
         '''
-        for sensor in self.sensors.keys():
-            if sensor is not 'collisions':
-                file = f'{sensor}_{step}.png'
-                save_img(img=self.sensors[sensor]['data'][-1], path=f'{self.save_path}/sensors/{file}')
-                if step > self.no_data_points:
-                    self.sensors[sensor]['data'].pop(0)
-                    #For future buffer change save to bulk save of all data from sensors till [-self.data_points:]
-                    # self.sensors[sensor]['data'].pop(0)
+        file = f'{sensor}_{step}.png'
+        save_img(img=self.sensors[sensor]['data'][-1], path=f'{self.save_path}/sensors/{file}')
+        if step > self.no_data_points:
+            self.sensors[sensor]['data'].pop(0)
+            #For future buffer change save to bulk save of all data from sensors till [-self.data_points:]
+            # self.sensors[sensor]['data'].pop(0)
 
     def destroy(self, data:bool=False) -> None:
         '''
@@ -259,6 +260,28 @@ class Agent:
 
         return True
 
+    def init_reporting(self) -> None:
+        '''
+        Initialize file for logging based on suite of utilized sensors
+        :param path:str, path to the experiment folder
+        :param sensors: dict of sensors from config consisting boolean values
+        :return: None
+        '''
+        state = self.get_state(step=0, retrieve_data=False)
+
+        # Apply action
+        action = self.play_step(state, batch=True)
+
+        if len(self.save_path.split('/')) > 1:
+            os.makedirs(name='/'.join(self.save_path.split('/')), exist_ok=True)
+
+        keys = list({**state, **action}.keys())
+        header = ','.join([f'{k}' for k in keys])
+        header = f'{header},reward\n'
+
+        with open(f'{self.save_path}/episode_info.csv', 'w+') as file:
+            file.write(header)
+        print('Init succesfull')
 
 class Environment:
     #TODO implement as Singleton
@@ -283,14 +306,23 @@ class Environment:
         :param args:
         :return:
         '''
-        # [agent.actor.destroy() for agent in self.agents]
-        # self.agents = []
-        self.world: carla.World = self.client.load_world(args.map)
-        if args.synchronous:
+
+        if self.agents:
+            for agent in self.agents:
+                agent.destroy(data=True)
+            self.agents = []
+
+        if self.client.get_world().get_map().name != args.map:
+            self.world: carla.World = self.client.load_world(args.map)
+        else:
+            self.world:carla.World = self.client.reload_world()
+
+        if args.synchronous & (not self.world.get_settings().synchronous_mode):
             settings = self.world.get_settings()
             settings.synchronous_mode = True  # Enables synchronous mode
             settings.fixed_delta_seconds = 1 / args.frames
             self.world.apply_settings(settings)
+
         return self.world
 
     def init_agents(self, no_agents:int, agent_config:dict) -> None:

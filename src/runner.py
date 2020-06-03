@@ -1,15 +1,18 @@
 import argparse
 import time
+import datetime
 
 import numpy as np
 import pandas as pd
 import carla
 
 #Local imports
-import visdom as vis
-
+import torch
+from control.nn_control import NNController
 from environment import Agent, Environment
-from spawn import df_to_spawn_points, numpy_to_transform, set_spectator_above_actor, configure_simulation
+from net.ddpg_net import DDPGActor, DDPGCritic
+from spawn import df_to_spawn_points, numpy_to_transform, set_spectator_above_actor, configure_simulation, \
+    to_vehicle_control
 from control.mpc_control import MPCController
 from control.abstract_control import Controller
 from tensorboardX import SummaryWriter
@@ -17,9 +20,9 @@ from tensorboardX import SummaryWriter
 #Configs
 #TODO Add dynamically generated foldername based on config settings and date.
 from config import DATA_PATH, FRAMERATE, TENSORBOARD_DATA, GAMMA, \
-    DATE_TIME, SENSORS, VEHICLES, CARLA_IP, MAP, NEGATIVE_REWARD
+    DATE_TIME, SENSORS, VEHICLES, CARLA_IP, MAP, NEGATIVE_REWARD, NUMERIC_FEATURES
 
-from utils import tensorboard_log, visdom_log, init_reporting, save_info, update_Qvals
+from utils import save_info, update_Qvals
 
 
 def main():
@@ -54,6 +57,11 @@ def main():
         metavar='M',
         default=MAP,
         help='Avialable maps: "circut_spa", "RaceTrack", "Racetrack2". Default: "circut_spa"')
+    argparser.add_argument(
+        '--inverse',
+        default=False,
+        type=bool,
+        help='Decides of inverting the track')
 
     argparser.add_argument(
         '--vehicle',
@@ -92,6 +100,20 @@ def main():
         dest='steps_ahead',
         help='steps 2calculate ahead for mpc')
 
+    argparser.add_argument(
+        '-c', '--conv',
+        default=64,
+        type=int,
+        dest='conv',
+        help='Conv hidden size')
+
+    argparser.add_argument(
+        '-l', '--linear',
+        default=128,
+        type=int,
+        dest='linear',
+        help='Linear hidden size')
+
     # Logging configs
     argparser.add_argument(
         '--tensorboard',
@@ -108,8 +130,12 @@ def main():
 
 def run_client(args):
 
+    # args.map = 'RaceTrack'
     args.host = 'localhost'
     args.port = 2000
+    args.linear = 256
+    args.conv = 128
+    # args.vehicle = 1
 
     args.tensorboard = False
     writer = None
@@ -126,23 +152,30 @@ def run_client(args):
     # In order to host more scripts concurrently
     client = configure_simulation(args)
 
-    # load spawnpoints from csv -> generate spawn points from notebooks/20200414_setting_points.ipynb
-    spawn_points_df = pd.read_csv(f'{DATA_PATH}/spawn_points/{args.map}.csv')
-    spawn_points = df_to_spawn_points(spawn_points_df, n=10000, inverse=False) #We keep it here in order to have one way simulation within one script
-
     # Controller initialization
     if args.controller is 'MPC':
         controller = MPCController(target_speed=TARGET_SPEED, steps_ahead=STEPS_AHEAD, dt=0.1)
+    elif args.controller is 'NN':
+        depth_shape = [1, 60, 320]
+        actor_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/20200531_1407/DDPGActor_l128_conv32/train2.pt'
+        critic_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/20200531_1315/DDPGCritic_l128_conv32/train.pt'
+        actor_net = DDPGActor(depth_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)],
+                              output_shape=[2], linear_hidden=args.linear, conv_hidden=args.conv, cuda=False)
+        actor_net.load_state_dict(torch.load(actor_path))
+        critic_net = DDPGCritic(actor_out_shape=[2, ], depth_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)],
+                            linear_hidden=args.linear, conv_hidden=args.conv, cuda=False)
+        critic_net.load_state_dict(torch.load(critic_path))
+
+        controller = NNController(actor_net=actor_net, critic_net=critic_net,
+                                  features=NUMERIC_FEATURES,device='cpu')
 
     status, actor_dict, env_dict, sensor_data = run_episode(client=client,
                                                             controller=controller,
-                                                            spawn_points=spawn_points,
                                                             writer=writer,
                                                             args=args)
 
 
-def run_episode(client:carla.Client, controller:Controller, spawn_points:np.array,
-                writer:SummaryWriter, args) -> (str, dict, dict, list):
+def run_episode(client:carla.Client, controller:Controller, writer:SummaryWriter, args) -> (str, dict, dict, list):
     '''
     Runs single episode. Configures world and agent, spawns it on map and controlls it from start point to termination
     state.
@@ -160,6 +193,9 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
              array[np.array] -> photos
     '''
     NUM_STEPS = args.num_steps
+
+    spawn_points_df = pd.read_csv(f'{DATA_PATH}/spawn_points/{args.map}.csv')
+    spawn_points = df_to_spawn_points(spawn_points_df, n=10000, inverse=args.inverse)
 
     environment = Environment(client=client)
     world = environment.reset_env(args)
@@ -187,19 +223,16 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
     # Release handbrake
     world.tick()
     time.sleep(1)
-    init_reporting(path=agent.save_path, sensors=SENSORS)
 
-    for step in range(NUM_STEPS):  #TODO change to while with conditions
+    # agent.init_reporting()
+
+    for step in range(NUM_STEPS):
         #Retrieve state and actions
 
-        state = agent.get_state(step, retrieve_data=True)
-
-        #Check if state is terminal
-
+        state = agent.get_state(step, retrieve_data=False)
 
         #Apply action
-        action = agent.play_step(state) #TODO split to two functions
-        # actions.append(action)
+        action = agent.play_step(state)
 
         #Transit to next state
         world.tick()
@@ -214,27 +247,27 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
 
         if state['distance_2finish'] < 5:
             print(f'agent {str(agent)} finished the race in {step} steps')
-            save_info(path=agent.save_path, state=state, action=action, reward=0)
-            update_Qvals(agent.save_path)
+            # save_info(path=agent.save_path, state=state, action=action, reward=0)
             break
 
         if state['collisions'] > 0:
             print(f'failed, collision {str(agent)}')
-            save_info(path=agent.save_path, state=state, action=action,
-                      reward=NEGATIVE_REWARD * (GAMMA ** step))
-            agent.destroy()
+            print(state['collisions'])
+            time.sleep(3)
+            # save_info(path=agent.save_path, state=state, action=action,
+            #           reward=NEGATIVE_REWARD * (GAMMA ** step))
+            # agent.destroy()
             break
 
-        save_info(path=agent.save_path, state=state, action=action, reward=reward)
+        # save_info(path=agent.save_path, state=state, action=action, reward=reward)
 
-        # print(f'step:{step} data:{len(agent.sensors["depth"]["data"])}')
         #Log
-        if ((agent.velocity < 20) & (step % 10 == 0)) or (step % 50 == 0):
+        if ((agent.velocity < 20) & (step % 10 == 0)) or (step % 100 == 0):
             set_spectator_above_actor(spectator, agent.transform)
         # time.sleep(0.1)
 
     #Calc Qvalues and add to reporting file
-    update_Qvals(path=agent.save_path)
+    # update_Qvals(path=agent.save_path)
 
     world.tick()
 

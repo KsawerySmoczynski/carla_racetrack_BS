@@ -6,10 +6,14 @@ import pandas as pd
 import carla
 
 #Local imports
+import torch
 import visdom as vis
 
+from control.nn_control import NNController
 from environment import Agent, Environment
-from spawn import df_to_spawn_points, numpy_to_transform, set_spectator_above_actor, configure_simulation
+from net.ddpg_net import DDPGActor, DDPGCritic
+from spawn import df_to_spawn_points, numpy_to_transform, set_spectator_above_actor, configure_simulation, \
+    to_vehicle_control
 from control.mpc_control import MPCController
 from control.abstract_control import Controller
 from tensorboardX import SummaryWriter
@@ -17,7 +21,7 @@ from tensorboardX import SummaryWriter
 #Configs
 #TODO Add dynamically generated foldername based on config settings and date.
 from config import DATA_PATH, FRAMERATE, TENSORBOARD_DATA, GAMMA, \
-    DATE_TIME, SENSORS, VEHICLES, CARLA_IP, MAP, NEGATIVE_REWARD
+    DATE_TIME, SENSORS, VEHICLES, CARLA_IP, MAP, NEGATIVE_REWARD, NUMERIC_FEATURES
 
 from utils import tensorboard_log, visdom_log, init_reporting, save_info, update_Qvals
 
@@ -92,6 +96,20 @@ def main():
         dest='steps_ahead',
         help='steps 2calculate ahead for mpc')
 
+    argparser.add_argument(
+        '-c', '--conv',
+        default=64,
+        type=int,
+        dest='conv',
+        help='Conv hidden size')
+
+    argparser.add_argument(
+        '-l', '--linear',
+        default=128,
+        type=int,
+        dest='linear',
+        help='Linear hidden size')
+
     # Logging configs
     argparser.add_argument(
         '--tensorboard',
@@ -108,8 +126,12 @@ def main():
 
 def run_client(args):
 
+    args.map = 'RaceTrack'
     args.host = 'localhost'
     args.port = 2000
+    args.linear = 256
+    args.conv = 128
+    args.vehicle = 1
 
     args.tensorboard = False
     writer = None
@@ -131,15 +153,30 @@ def run_client(args):
     spawn_points = df_to_spawn_points(spawn_points_df, n=10000, inverse=False) #We keep it here in order to have one way simulation within one script
 
     # Controller initialization
-    if args.controller is 'NN':
-        controller = NNController()
+    if args.controller is 'MPC':
+        controller = MPCController(target_speed=TARGET_SPEED, steps_ahead=STEPS_AHEAD, dt=0.1)
+    elif args.controller is 'NN':
+        depth_shape = [1, 60, 320]
+        actor_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/20200531_1407/DDPGActor_l128_conv32/train2.pt'
+        critic_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/20200531_1315/DDPGCritic_l128_conv32/train.pt'
+        actor_net = DDPGActor(depth_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)],
+                              output_shape=[2], linear_hidden=args.linear, conv_hidden=args.conv, cuda=False)
+        actor_net.load_state_dict(torch.load(actor_path))
+        critic_net = DDPGCritic(actor_out_shape=[2, ], depth_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)],
+                            linear_hidden=args.linear, conv_hidden=args.conv, cuda=False)
+        critic_net.load_state_dict(torch.load(critic_path))
+
+        actor_net.eval()
+        critic_net.eval()
+
+        controller = NNController(actor_net=actor_net, critic_net=critic_net,
+                                  features=NUMERIC_FEATURES,device='cpu')
 
     status, actor_dict, env_dict, sensor_data = run_episode(client=client,
                                                             controller=controller,
                                                             spawn_points=spawn_points,
                                                             writer=writer,
                                                             args=args)
-
 
 
 def run_episode(client:carla.Client, controller:Controller, spawn_points:np.array,
@@ -199,8 +236,17 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
 
 
         #Apply action
-        action = agent.play_step(state) #TODO split to two functions
+        action = agent.play_step(state, batch=True) #TODO split to two functions
         # actions.append(action)
+        print(action['gas_brake'], action['steer'], state['velocity'])
+        time.sleep(0.5)
+        if step < 70:
+            action['gas_brake'] = 1.
+            action['steer'] = 0
+        elif action['gas_brake'] < 0.3:
+            action['gas_brake'] = 0.6
+
+        agent.actor.apply_control(to_vehicle_control(gas_brake=action['gas_brake'], steer=action['steer']))
 
         #Transit to next state
         world.tick()
@@ -215,23 +261,22 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
 
         if state['distance_2finish'] < 5:
             print(f'agent {str(agent)} finished the race in {step} steps')
-            save_info(path=agent.save_path, state=state, action=action, reward=0)
-            update_Qvals(agent.save_path)
+            # save_info(path=agent.save_path, state=state, action=action, reward=0)
             break
 
         if state['collisions'] > 0:
             print(f'failed, collision {str(agent)}')
-            save_info(path=agent.save_path, state=state, action=action,
-                      reward=NEGATIVE_REWARD * (GAMMA ** step))
-            agent.destroy()
+            # save_info(path=agent.save_path, state=state, action=action,
+            #           reward=NEGATIVE_REWARD * (GAMMA ** step))
+            # agent.destroy()
             break
 
-        save_info(path=agent.save_path, state=state, action=action, reward=reward)
+        # save_info(path=agent.save_path, state=state, action=action, reward=reward)
 
         # print(f'step:{step} data:{len(agent.sensors["depth"]["data"])}')
         #Log
-        if ((agent.velocity < 20) & (step % 10 == 0)) or (step % 50 == 0):
-            set_spectator_above_actor(spectator, agent.transform)
+        # if ((agent.velocity < 20) & (step % 10 == 0)) or (step % 50 == 0):
+        #     set_spectator_above_actor(spectator, agent.transform)
         # time.sleep(0.1)
 
     #Calc Qvalues and add to reporting file

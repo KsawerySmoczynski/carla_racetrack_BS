@@ -1,6 +1,8 @@
 #Script for pretraining reference net
 import argparse
+import json
 import os
+from subprocess import check_call
 
 import numpy as np
 from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR, CosineAnnealingWarmRestarts
@@ -13,6 +15,7 @@ np.random.seed(48)
 import pandas as pd
 import torch
 torch.manual_seed(48)
+from torchviz import make_dot
 from torchvision import transforms
 from torch import multiprocessing as mp, nn
 from tensorboardX import SummaryWriter
@@ -27,7 +30,7 @@ from net.utils import get_paths, DepthPreprocess, ToSupervised, SimpleDataset, u
 
 def main(args):
 
-    tag = None
+    tag = args.tag
     device = torch.device('cuda:0')
 
     no_epochs = args.epochs
@@ -59,7 +62,7 @@ def main(args):
     print(net)
     print(get_n_params(net))
     # save path
-    net_path = f'../data/models/{DATE_TIME}/{net.name()}'
+    net_path = f'../data/models/{DATE_TIME}/{net.name}'
     os.makedirs(net_path, exist_ok=True)
     optim_steps = args.optim_steps
     logging_idx = int(len(dataset_train.dataset) / (batch_size * optim_steps))
@@ -70,9 +73,9 @@ def main(args):
     #Optimizers
     optimizer = torch.optim.Adam(net.parameters(), lr=0.002, weight_decay=0.2)
 
-    if args.scheduler is 'cos':
+    if args.scheduler == 'cos':
         scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=optim_steps, T_mult=1)
-    else:
+    elif args.scheduler == 'one_cycle':
         scheduler = OneCycleLR(optimizer, max_lr=0.002, epochs=no_epochs,
                                             steps_per_epoch=optim_steps)
 
@@ -90,11 +93,10 @@ def main(args):
         avg_max_grad = 0.
         avg_avg_grad = 0.
         for idx, batch in enumerate(iter(dataset_train)):
-            global_step = ((len(dataset_train.dataset) / batch_size * epoch_idx) + idx)
-            input, action, q = unpack_supervised_batch(batch=batch, device=device)
-
-            # loss, loss_mean, grad = train(input=input, label=action, net=net, optimizer=optimizer, loss_fn=loss_function)
-            loss, loss_mean, grad = train(input=(action, *input), label=q, net=net, optimizer=optimizer, loss_fn=loss_function)
+            global_step = int((len(dataset_train.dataset) / batch_size * epoch_idx) + idx)
+            batch = unpack_supervised_batch(batch=batch, device=device)
+            # loss, loss_mean, grad = train(input=batch, label=batch['action'], net=net, optimizer=optimizer, loss_fn=loss_function)
+            loss, loss_mean, grad = train(input=batch, label=batch['q'], net=net, optimizer=optimizer, loss_fn=loss_function)
 
             avg_max_grad += max([element.max() for element in grad])
             avg_avg_grad += sum([element.mean() for element in grad]) / len(grad)
@@ -102,58 +104,67 @@ def main(args):
             running_loss += loss_mean.item()
             train_loss += loss_mean.item()
 
-            writer_train.add_scalar(tag=f'{net.name()}/running_loss',
+            writer_train.add_scalar(tag=f'{net.name}/running_loss',
                                           scalar_value=loss_mean.item(),
                                           global_step=global_step)
-            writer_train.add_scalar(tag=f'{net.name()}/max_grad', scalar_value=avg_max_grad,
+            writer_train.add_scalar(tag=f'{net.name}/max_grad', scalar_value=avg_max_grad,
                                           global_step=global_step)
-            writer_train.add_scalar(tag=f'{net.name()}/mean_grad', scalar_value=avg_avg_grad,
+            writer_train.add_scalar(tag=f'{net.name}/mean_grad', scalar_value=avg_avg_grad,
                                           global_step=global_step)
 
             if idx % logging_idx == logging_idx-1:
                 print(f'Actor Epoch: {epoch_idx + 1}, Batch: {idx+1}, Loss: {running_loss/logging_idx}, Lr: {scheduler.get_last_lr()[0]}')
                 if (running_loss/logging_idx) < best_train_loss:
                     best_train_loss = running_loss/logging_idx
-                    torch.save(net.state_dict(), f'{net_path}/train.pt')
+                    torch.save(net.state_dict(), f'{net_path}/train/train.pt')
 
-                writer_train.add_scalar(tag=f'{net.name()}/lr', scalar_value=scheduler.get_last_lr()[0],
+                writer_train.add_scalar(tag=f'{net.name}/lr', scalar_value=scheduler.get_last_lr()[0],
                                               global_step=global_step)
                 running_loss = 0.0
-                # critic_running_loss = 0.0
                 avg_max_grad = 0.
                 avg_avg_grad = 0.
                 scheduler.step()
 
         print(f'Actor best train loss for epoch {epoch_idx+1} - {best_train_loss}')
-        writer_train.add_scalar(tag=f'{net.name()}/global_loss', scalar_value=train_loss/len(dataset_train),
+        writer_train.add_scalar(tag=f'{net.name}/global_loss', scalar_value=train_loss/len(dataset_train),
                                       global_step=(epoch_idx+1))
         test_loss = .0
-        # critic_test_loss = .0
         with torch.no_grad():
             for idx, batch in enumerate(iter(dataset_test)):
-                input, action, q = unpack_supervised_batch(batch=batch, device=device)
-                # pred = net(input)
-                pred = net((action, *input))
-                # loss = test_loss_function(pred, action)
-                loss = test_loss_function(pred.view(-1), q)
+                batch = unpack_supervised_batch(batch=batch, device=device)
+                pred = net(**batch)
+                # loss = test_loss_function(pred, batch['action'])
+                loss = test_loss_function(pred.view(-1), batch['q'])
 
                 test_loss += loss.item()
 
         if (test_loss / len(dataset_test)) < best_test_loss:
             best_test_loss = (test_loss / len(dataset_test))
-            torch.save(net.state_dict(), f'{net_path}_test.pt')
+            torch.save(net.state_dict(), f'{net_path}/test/test.pt')
 
-        print(f'Actor test loss {(test_loss/len(dataset_test)):.3f}')
-        print(f'Actor best test loss {best_test_loss:.3f}')
-        # print(f'Critic test loss {(critic_test_loss/200):.3f}')
-        writer_test.add_scalar(tag=f'{net.name()}/global_loss', scalar_value=(test_loss/len(dataset_test)),
+        print(f'{net.name} test loss {(test_loss/len(dataset_test)):.3f}')
+        print(f'{net.name} best test loss {best_test_loss:.3f}')
+        writer_test.add_scalar(tag=f'{net.name}/global_loss', scalar_value=(test_loss/len(dataset_test)),
                                      global_step=(epoch_idx + 1))
+
+    torch.save(optimizer.state_dict(), f=f'{net_path}/{optimizer.__class__.__name__}.pt')
+    torch.save(scheduler.state_dict(), f=f'{net_path}/{scheduler.__class__.__name__}.pt')
+    json.dump(vars(args), fp=open(f'{net_path}/args.json', 'w'), sort_keys=True, indent=4)
+
+    batch = next(iter(dataset_test))
+    batch = unpack_supervised_batch(batch=batch, device=device)
+    y = net(**batch)
+    g = make_dot(y, params=dict(net.named_parameters()))
+    g.save(filename=f'{DATE_TIME}_{net.name}.dot', directory=net_path)
+    check_call(['dot', '-Tpng', '-Gdpi=200', f'{net_path}/{DATE_TIME}_{net.name}.dot', '-o', f'{net_path}/{DATE_TIME}_{net.name}.png'])
 
     writer_train.flush()
     writer_test.flush()
+    writer_train.close()
+    writer_test.close()
 
 
-def train(input:list, label:torch.Tensor, net:nn.Module, optimizer:torch.optim.Optimizer, loss_fn:torch.nn.MSELoss):
+def train(input:dict, label:torch.Tensor, net:nn.Module, optimizer:torch.optim.Optimizer, loss_fn:torch.nn.MSELoss):
     '''
 
     :param input:
@@ -164,7 +175,7 @@ def train(input:list, label:torch.Tensor, net:nn.Module, optimizer:torch.optim.O
     :return:
     '''
     optimizer.zero_grad()
-    y_pred = net(input).view(-1)
+    y_pred = net(**input).view(-1)
     loss = loss_fn(y_pred, label.view(-1))
     loss_weighted = (loss * (loss / loss.sum())).sum().mean()
     loss_weighted.backward()
@@ -172,11 +183,10 @@ def train(input:list, label:torch.Tensor, net:nn.Module, optimizer:torch.optim.O
     grad = [p.detach().cpu().abs() for p in net.parameters()]
     optimizer.step()
 
+    return loss_weighted, loss.cpu().detach().mean(), grad
 
-    return loss_weighted, loss.mean(), grad
 
-
-if __name__ == '__main__':
+def parse_args():
     argparser = argparse.ArgumentParser()
     argparser.add_argument(
         '-e', '--epochs',
@@ -184,38 +194,43 @@ if __name__ == '__main__':
         type=int,
         dest='epochs',
         help='Max number of epochs')
-
     argparser.add_argument(
         '-c', '--conv',
         default=64,
         type=int,
         dest='conv',
         help='Conv hidden size')
-
     argparser.add_argument(
         '-l', '--linear',
         default=128,
         type=int,
         dest='linear',
         help='Linear hidden size')
-
     argparser.add_argument(
         '--optim_steps',
         default=16,
         type=int,
         dest='optim_steps',
         help='Number of optimization steps')
-
     argparser.add_argument(
         '--scheduler',
-        default='one_cycle',
+        default='cos',
         dest='scheduler',
         help='Number of optimization steps')
-
-
+    argparser.add_argument(
+        '--tag',
+        default=None,
+        dest='tag',
+        help='Filter for dataset')
     args = argparser.parse_known_args()
     if len(args) > 1:
         args = args[0]
+
+    return args
+
+
+if __name__ == '__main__':
+    args = parse_args()
 
     try:
         main(args)

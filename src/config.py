@@ -20,10 +20,10 @@ FRAMERATE = 30
 MAP = 'circut_spa'
 INVERSE = False
 
-VEHICLES = ['vehicle.dodge_charger.police', 'vehicle.mustang.mustang', 'vehicle.tesla.model3']
+VEHICLES = ['vehicle.audi.tt', 'vehicle.tesla.model3', 'vehicle.mini.cooperst']
 
 #Controller config
-IMAGE_DOWNSIZE_FACTOR = 10
+IMAGE_DOWNSIZE_FACTOR = 8
 STEER_BOUNDS = (-1, 1)
 THROTTLE_BOUNDS = (-1,1)
 #Order of sensors in dict is important for the logging purposes
