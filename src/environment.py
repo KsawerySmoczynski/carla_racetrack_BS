@@ -115,7 +115,7 @@ class Agent:
                 self._release_data(sensor=sensor, step=state['step'])
 
         collision = sum(self.sensors['collisions']['data'])
-        state['collisions'] = collision if collision > 2_000 else 0
+        state['collisions'] = collision if collision > 2_500 else 0
         control = self.actor.get_control()
         state['state_steer'] = control.steer
         state['state_gas_brake'] = control_to_gas_brake(control)
@@ -253,7 +253,6 @@ class Agent:
             for sensor in self.sensors:
                 self.sensors[sensor]['actor'].destroy()
         self.actor.destroy()
-        self.controller = None
 
         if data:
             self.sensors = None

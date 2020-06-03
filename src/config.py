@@ -20,7 +20,7 @@ FRAMERATE = 30
 MAP = 'circut_spa'
 INVERSE = False
 
-VEHICLES = ['vehicle.audi.tt', 'vehicle.tesla.model3', 'vehicle.mini.cooperst']
+VEHICLES = ['vehicle.mini.cooperst']
 
 #Controller config
 IMAGE_DOWNSIZE_FACTOR = 8

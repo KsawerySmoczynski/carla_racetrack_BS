@@ -224,12 +224,12 @@ def run_episode(client:carla.Client, controller:Controller, writer:SummaryWriter
     world.tick()
     time.sleep(1)
 
-    # agent.init_reporting()
+    agent.init_reporting()
 
     for step in range(NUM_STEPS):
         #Retrieve state and actions
 
-        state = agent.get_state(step, retrieve_data=False)
+        state = agent.get_state(step, retrieve_data=True)
 
         #Apply action
         action = agent.play_step(state)
@@ -247,19 +247,19 @@ def run_episode(client:carla.Client, controller:Controller, writer:SummaryWriter
 
         if state['distance_2finish'] < 5:
             print(f'agent {str(agent)} finished the race in {step} steps')
-            # save_info(path=agent.save_path, state=state, action=action, reward=0)
+            save_info(path=agent.save_path, state=state, action=action, reward=0)
             break
 
         if state['collisions'] > 0:
             print(f'failed, collision {str(agent)}')
             print(state['collisions'])
             time.sleep(3)
-            # save_info(path=agent.save_path, state=state, action=action,
-            #           reward=NEGATIVE_REWARD * (GAMMA ** step))
-            # agent.destroy()
+            save_info(path=agent.save_path, state=state, action=action,
+                      reward=NEGATIVE_REWARD * (GAMMA ** step))
+            agent.destroy()
             break
 
-        # save_info(path=agent.save_path, state=state, action=action, reward=reward)
+        save_info(path=agent.save_path, state=state, action=action, reward=reward)
 
         #Log
         if ((agent.velocity < 20) & (step % 10 == 0)) or (step % 100 == 0):
@@ -267,7 +267,7 @@ def run_episode(client:carla.Client, controller:Controller, writer:SummaryWriter
         # time.sleep(0.1)
 
     #Calc Qvalues and add to reporting file
-    # update_Qvals(path=agent.save_path)
+    update_Qvals(path=agent.save_path)
 
     world.tick()
 
