@@ -306,7 +306,7 @@ class Agent:
         with open(f'{self.save_path}/episode_info.csv', 'w+') as file:
             file.write(header)
 
-        json.dump(dict(self), open(f'{self.save_path}/agent_info.json', 'w+'))
+        json.dump(self.__dict__(), open(f'{self.save_path}/agent_info.json', 'w+'))
 
         print('Init succesfull')
 
