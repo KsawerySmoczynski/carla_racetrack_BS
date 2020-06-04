@@ -36,7 +36,7 @@ class NNController(Controller):
         x_numeric = torch.Tensor([state[feature] for feature in self.features]).unsqueeze(0).float().to(self.device)
         imgs = [self.transform(img_to_pil(img)) for img in state['depth_data']]
         depth = torch.cat(imgs, dim=2).unsqueeze(0).float().to(self.device)
-        # depth = depth - depth.mean()
+        # img = img - img.mean()
 
         return (x_numeric, depth)
 

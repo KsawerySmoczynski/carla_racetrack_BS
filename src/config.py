@@ -25,12 +25,12 @@ VEHICLES = ['vehicle.mini.cooperst']
 
 #Controller config
 IMAGE_DOWNSIZE_FACTOR = 10
-IMAGE_SIZE = (100,75)
+IMAGE_SIZE = (80,60)
 STEER_BOUNDS = (-1, 1)
 THROTTLE_BOUNDS = (-1,1)
 #Order of sensors in dict is important for the logging purposes
 SENSORS = {
-    'depth': True,
+    'depth':True,
     'rgb': True,
     'segmentation': True,
     'collisions': True,
@@ -40,13 +40,10 @@ SENSORS = {
 DEVICE = torch.device('cuda:0')
 NEGATIVE_REWARD = -100
 NUMERIC_FEATURES = ['state_steer', 'state_gas_brake','distance_2finish','velocity','collisions']
-FEATURES_FOR_BATCH = ['step',*NUMERIC_FEATURES,'steer','gas_brake','reward', 'q']
+FEATURES_FOR_BATCH = ['step',*NUMERIC_FEATURES,'steer','gas_brake','reward','q']
 NO_AGENTS = 2
 GAMMA = .999
 LEARNING_RATE = 0.001
 NUMBER_OF_EPOCHS = 100
 BATCH_SIZE = 20
 RANDOM_SEED = 42
-
-
-#Odwrócony circut spa nie działa

@@ -206,13 +206,13 @@ class Agent:
         Initializes sensors based on intial sensor dict loaded from config
         :return: None
         '''
-        if 'depth' in self.sensors.keys():
-            self.sensors['depth']['data'] = []
-            self.sensors['depth']['actor'] = self.world.spawn_actor(blueprint=self.sensors['depth']['blueprint'],
-                                                  transform=self.sensors['depth']['transform'],
+        if 'img' in self.sensors.keys():
+            self.sensors['img']['data'] = []
+            self.sensors['img']['actor'] = self.world.spawn_actor(blueprint=self.sensors['img']['blueprint'],
+                                                  transform=self.sensors['img']['transform'],
                                                   attach_to=self.actor)
-            self.sensors['depth']['actor'].listen(lambda img_raw: (img_raw.convert(self.sensors['depth']['color_converter']), \
-                                                 self.sensors['depth']['data'].append(to_rgb(to_array(img_raw)))))
+            self.sensors['img']['actor'].listen(lambda img_raw: (img_raw.convert(self.sensors['img']['color_converter']), \
+                                                 self.sensors['img']['data'].append(to_rgb(to_array(img_raw)))))
 
         if 'rgb' in self.sensors.keys():
             self.sensors['rgb']['data'] = []

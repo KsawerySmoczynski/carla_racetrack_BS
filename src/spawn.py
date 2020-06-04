@@ -141,7 +141,7 @@ def sensors_config(blueprint_library:carla.BlueprintLibrary,depth:bool=True,
         depth_bp.set_attribute('image_size_y', f'{IMAGE_SIZE[1]}')
         depth_relative_transform = carla.Transform(carla.Location(1.4, 0, 1.4), carla.Rotation(-5., 0, 0))
         cc = carla.ColorConverter.LogarithmicDepth
-        sensors['depth'] = {'blueprint': depth_bp,
+        sensors['img'] = {'blueprint': depth_bp,
                             'transform': depth_relative_transform,
                             'color_converter':cc}
 

@@ -63,8 +63,8 @@ def visdom_initialize_windows(viz:visdom.Visdom, title:str, sensors:dict, locati
     :return:
     '''
     windows = {}
-    if sensors['depth']:
-        windows['depth'] = viz.image(np.zeros((3, 75, 100)), opts=dict(title=f'{title} Depth sensor', width=800, height=600))
+    if sensors['img']:
+        windows['img'] = viz.image(np.zeros((3, 75, 100)), opts=dict(title=f'{title} Depth sensor', width=800, height=600))
 
     if sensors['rgb']:
         windows['rgb'] = viz.image(np.zeros((3, 75, 100)), opts=dict(title=f'{title} RGB camera', width=800, height=600))
@@ -98,10 +98,10 @@ def visdom_log(viz:visdom.Visdom, windows:dict, state:dict, action:dict, reward:
     viz.line(X=[step], Y=[state['velocity']], win=windows['velocity'], update='append')
     viz.line(X=[step], Y=[state['distance_2finish']], win=windows['distance_2finish'], update='append')
 
-    if 'depth' in state.keys():
-        img = state['depth'][-1]
+    if 'img' in state.keys():
+        img = state['img'][-1]
         img = np.moveaxis(img, 2, 0).copy().astype(np.uint8)
-        viz.image(img=img, win=windows['depth'], opts=dict(width=800, height=600))
+        viz.image(img=img, win=windows['img'], opts=dict(width=800, height=600))
 
     if 'rgb' in state.keys():
         img = state['rgb'][-1]
