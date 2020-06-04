@@ -53,9 +53,9 @@ class Agent:
         agent = {'name': str(self),
                  'map': self.map,
                  'save_path': self.save_path,
-                 'spawn_point_idx': self.spawn_point_idx,
+                 'spawn_point_idx': int(self.spawn_point_idx),
                  'no_data_points': self.no_data_points,
-                 'sensors': self.sensors.keys(),
+                 'sensors': list(self.sensors.keys()),
                  'controller': self.controller.name,
                  'vehicle': self.actor.id
                  }
