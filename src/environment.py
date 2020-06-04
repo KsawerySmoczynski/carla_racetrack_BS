@@ -49,15 +49,15 @@ class Agent:
     def __str__(self) -> str:
         return f'{self.controller.__class__.__name__}_{"_".join(self.sensors.keys())}_{self.spawn_point_idx}'
 
-    def __dict__(self) -> dict:
+    def dict(self) -> dict:
         agent = {'name': str(self),
                  'map': self.map,
                  'save_path': self.save_path,
                  'spawn_point_idx': int(self.spawn_point_idx),
                  'no_data_points': self.no_data_points,
                  'sensors': list(self.sensors.keys()),
-                 'controller': self.controller.name,
-                 'vehicle': self.actor.id
+                 'controller': self.controller.dict(),
+                 'vehicle': self.actor.type_id
                  }
         return agent
 
@@ -267,7 +267,7 @@ class Agent:
             #For future buffer change save to bulk save of all data from sensors till [-self.data_points:]
             # self.sensors[sensor]['data'].pop(0)
 
-    def destroy(self, data:bool=False) -> None:
+    def destroy(self, data:bool=False, step:bool=False) -> None:
         '''
         Destroying agent entities while preserving sensors data.
         :param: data:bool, decides of cleaning data asociated with agent from buffer.
@@ -275,7 +275,11 @@ class Agent:
         '''
         if self.sensors_initialized:
             for sensor in self.sensors:
+                if sensor is not 'collisions' and step:
+                    for i in range(len(self.sensors[sensor]['data'])):
+                        self._release_data(sensor=sensor, step=step+i)
                 self.sensors[sensor]['actor'].destroy()
+
         self.actor.destroy()
 
         if data:
@@ -306,7 +310,7 @@ class Agent:
         with open(f'{self.save_path}/episode_info.csv', 'w+') as file:
             file.write(header)
 
-        json.dump(self.__dict__(), open(f'{self.save_path}/agent_info.json', 'w+'))
+        json.dump(self.dict(), open(f'{self.save_path}/agent_info.json', 'w+'), indent=4)
 
         print('Init succesfull')
 

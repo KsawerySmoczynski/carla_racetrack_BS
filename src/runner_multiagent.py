@@ -210,7 +210,7 @@ def run_episode(client:carla.Client, controller:Controller, args) -> (dict, dict
                 print(f'agent {str(agent)} finished the race in {step} steps car {args.vehicle}')
                 save_info(path=agent.save_path, state=state, action=action, reward=0)
                 status[str(agent)] = 'Finished'
-                agent.destroy(data=True)
+                agent.destroy(data=True, step=step)
                 environment.agents.pop(idx)
 
             if state['collisions'] > 0:
@@ -218,7 +218,7 @@ def run_episode(client:carla.Client, controller:Controller, args) -> (dict, dict
                 save_info(path=agent.save_path, state=state, action=action,
                           reward=reward + NEGATIVE_REWARD * (GAMMA ** step))
                 status[str(agent)] = 'Collision'
-                agent.destroy(data=True)
+                agent.destroy(data=True, step=step)
                 environment.agents.pop(idx)
 
         for agent, state, action, reward in zip(environment.agents, states, actions, rewards):
@@ -229,10 +229,14 @@ def run_episode(client:carla.Client, controller:Controller, args) -> (dict, dict
             print('fini')
             break
 
+    if len(environment.agents) > 1:
+        for agent in environment.agents:
+            agent.destroy(data=True, step=NUM_STEPS)
+
     for agent_path in save_paths:
         update_Qvals(path=agent_path)
 
-
+    world.tick()
     world.tick()
 
     return status, save_paths

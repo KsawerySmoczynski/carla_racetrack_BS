@@ -73,7 +73,20 @@ def to_vehicle_control_discreet(gas_brake:float, steer:float) -> carla.VehicleCo
 
 
 def to_vehicle_control(gas_brake:float, steer:float) -> carla.VehicleControl:
-    #TODO think about it
+    '''
+    Modelling inputs from controller to actuator values.
+    :param gas_brake:float in range <-1,1>
+    :param steer:float in range <-1,1>
+    :return: carla.VehicleControl
+    '''
+
+    if gas_brake > 0.0:
+        return carla.VehicleControl(throttle=gas_brake, steer=steer, reverse=False)
+    else:
+        return carla.VehicleControl(throttle=0, brake=gas_brake, steer=steer, reverse=False)
+
+
+def to_vehicle_control_all(gas_brake:float, steer:float) -> carla.VehicleControl:
     '''
     Modelling inputs from controller to actuator values.
     :param gas_brake:float in range <-1,1>

@@ -113,7 +113,7 @@ class DDPG(torch.nn.Module):
         x = F.relu(self.maxp4(self.conv_depth4(x)))
         return int(np.prod(x.size()))
 
-
+#TODO add dict representation
 class DDPGActor(DDPG):
     def __init__(self, depth_shape, numeric_shape, output_shape, rgb: bool = False, rgb_shape: bool = None,
                  cuda: bool = True, linear_hidden: int = 256, conv_hidden: int = 32):
@@ -155,6 +155,7 @@ class DDPGActor(DDPG):
         return x
 
 
+#TODO add dict representation
 class DDPGCritic(DDPG):
     def __init__(self, actor_out_shape, depth_shape, numeric_shape, rgb_shape: bool = None, rgb: bool = False,
                  cuda: bool = True, linear_hidden: int = 256, conv_hidden: int = 32):

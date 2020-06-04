@@ -87,6 +87,13 @@ class MPCController(Controller):
         self.steer = None
         self.throttle = None
 
+    def dict(self):
+        controller =  {'name': self.__class__.__name__,
+                       'target_speed': self.target_speed,
+                       'steps_ahead': self.steps_ahead,
+                       'dt':self.dt}
+        return controller
+
     @property
     def name(self) -> str:
         return f'{self.__class__.__name__}_ts{self.target_speed}_sa{self.steps_ahead}_dt{self.dt}'

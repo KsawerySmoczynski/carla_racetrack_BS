@@ -19,6 +19,14 @@ class NNController(Controller):
         self.features = features
         self.transform = transforms.ToTensor()
 
+    def dict(self):
+        controller = {'actor_net': self.actor_net.name,
+                      'critic_net': self.critic_net.name,
+                      'device': str(self.device),
+                      'features': self.features,
+                      'transform': repr(self.transform)}
+        return controller
+
     def preprocess(self, state:dict):
         '''
 
