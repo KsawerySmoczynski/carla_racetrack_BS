@@ -21,34 +21,29 @@ from net.utils import norm_col_init, weights_init
 
 
 class DDPG(torch.nn.Module):
-    def __init__(self, depth_shape, numeric_shape, rgb_shape=None, rgb: bool = False, linear_hidden: int = 256,
-                 conv_hidden: int = 32):
+    def __init__(self, img_shape, numeric_shape, linear_hidden: int = 256, conv_hidden: int = 64):
         '''
 
-        :param depth_shape: no channels
+        :param img_shape: no channels
         :param rgb_shape: no channels
         :param n_numeric_inputs:
         :param rgb:
         '''
         assert (conv_hidden % 2 == 0), 'conv hidden has to be even number'
-        # assert (conv_hidden % 4 == 0), 'conv hidden has to be bigger than 4 number'
 
         # Num inputs to szerokość
         super(DDPG, self).__init__()
-        self.conv_depth = nn.Conv2d(depth_shape[0], conv_hidden, 5, stride=1, padding=2)
-        self.conv_depth2 = nn.Conv2d(conv_hidden, int(conv_hidden / 2), 3, stride=1, padding=1)
-        self.conv_depth3 = nn.Conv2d(int(conv_hidden / 2), int(conv_hidden), 3, stride=1, padding=1)
-        self.conv_depth4 = nn.Conv2d(int(conv_hidden), int(conv_hidden), 2, stride=1, padding=1)
-        # if list(rgb_shape):
-        #     self.conv_rgb = nn.Conv2d(rgb_shape[0], 64, 5, stride=1, padding=2)
-        #     self.conv_rgb2 = nn.Conv2d(64, 32, 3, stride=1, padding=1)
-        # may be a problem, just add maxpool to particular layers
+        self.conv = nn.Conv2d(img_shape[0], conv_hidden, 7, stride=2, padding=3)
+        self.conv2 = nn.Conv2d(conv_hidden, conv_hidden, 5, stride=1, padding=2)
+        self.conv3 = nn.Conv2d(conv_hidden, int(conv_hidden * 2), 5, stride=1, padding=1)
+        self.conv4 = nn.Conv2d(int(conv_hidden*2), int(conv_hidden * 2), 3, stride=1, padding=1)
+
         self.maxp1 = nn.MaxPool2d(2, 2)
         self.maxp2 = nn.MaxPool2d(2, 2)
         self.maxp3 = nn.MaxPool2d(2, 2)
         self.maxp4 = nn.MaxPool2d(2, 2)
 
-        conv_out_size = self._get_conv_out(depth_shape)
+        conv_out_size = self._get_conv_out(img_shape)
 
         self.linear = nn.Linear(numeric_shape[0], int(linear_hidden / 2))
         self.linear_conv = nn.Linear(conv_out_size, linear_hidden)
@@ -62,10 +57,10 @@ class DDPG(torch.nn.Module):
 
         self.apply(weights_init)
         relu_gain = nn.init.calculate_gain('relu')
-        self.conv_depth.weight.data.mul_(relu_gain)
-        self.conv_depth2.weight.data.mul_(relu_gain)
-        self.conv_depth3.weight.data.mul_(relu_gain)
-        self.conv_depth4.weight.data.mul_(relu_gain)
+        self.conv.weight.data.mul_(relu_gain)
+        self.conv2.weight.data.mul_(relu_gain)
+        self.conv3.weight.data.mul_(relu_gain)
+        self.conv4.weight.data.mul_(relu_gain)
         # if list(rgb_shape):
         #     self.conv_rgb.weight.data.mul_(relu_gain)
         #     self.conv_rgb2.weight.data.mul_(relu_gain)
@@ -81,23 +76,18 @@ class DDPG(torch.nn.Module):
 
     @property
     def name(self):
-        return f'{self.__class__.__name__}_l{self.linear.out_features}_conv{self.conv_depth.out_channels}'
+        return f'{self.__class__.__name__}_l{self.linear.out_features}_conv{self.conv.out_channels}'
 
     def forward(self, x_numeric: torch.Tensor, depth: torch.Tensor,
                 rgb: torch.Tensor = None, **kwargs) -> object:
         x_numeric = self.linear(x_numeric)
 
-        # Adhoc conversion from rgb to depth
-        x = F.relu(self.maxp1(self.conv_depth(depth)))
-        x = F.relu(self.maxp2(self.conv_depth2(x)))
-        x = F.relu(self.maxp3(self.conv_depth3(x)))
-        x = F.relu(self.maxp4(self.conv_depth4(x)))
+        # Adhoc conversion from rgb to img
+        x = F.relu(self.maxp1(self.conv(depth)))
+        x = F.relu(self.maxp2(self.conv2(x)))
+        x = F.relu(self.maxp3(self.conv3(x)))
+        x = F.relu(self.maxp4(self.conv4(x)))
 
-        # if self.rgb:
-        #     x_rgb = F.relu(self.maxp1(self.conv_rgb(rgb)))
-        #     x_rgb = F.relu(self.maxp2(self.conv_rgb2(x_rgb)))
-        #     # x_rgb = x_rgb.view(x_rgb.size(0), -1)
-        #     x = torch.cat((x, x_rgb), dim=1)
         x = x.view(x.size(0), -1)
         x = self.linear_conv(x)
         x = torch.cat((x_numeric, x), dim=1)
@@ -107,18 +97,18 @@ class DDPG(torch.nn.Module):
 
     def _get_conv_out(self, shape):
         x = torch.zeros(1, *shape)
-        x = F.relu(self.maxp1(self.conv_depth(x)))
-        x = F.relu(self.maxp2(self.conv_depth2(x)))
-        x = F.relu(self.maxp3(self.conv_depth3(x)))
-        x = F.relu(self.maxp4(self.conv_depth4(x)))
+        x = F.relu(self.maxp1(self.conv(x)))
+        x = F.relu(self.maxp2(self.conv2(x)))
+        x = F.relu(self.maxp3(self.conv3(x)))
+        x = F.relu(self.maxp4(self.conv4(x)))
         return int(np.prod(x.size()))
 
 #TODO add dict representation
 class DDPGActor(DDPG):
-    def __init__(self, depth_shape, numeric_shape, output_shape, rgb: bool = False, rgb_shape: bool = None,
-                 cuda: bool = True, linear_hidden: int = 256, conv_hidden: int = 32):
-        super(DDPGActor, self).__init__(depth_shape=depth_shape, numeric_shape=numeric_shape, rgb_shape=rgb_shape,
-                                        rgb=rgb, linear_hidden=linear_hidden, conv_hidden=conv_hidden)
+    def __init__(self, img_shape, numeric_shape, output_shape,
+                 linear_hidden: int = 256, conv_hidden: int = 32, cuda: bool = True):
+        super(DDPGActor, self).__init__(img_shape=img_shape, numeric_shape=numeric_shape,
+                                        linear_hidden=linear_hidden, conv_hidden=conv_hidden)
         self.linear3 = nn.Linear(self.linear2.out_features, int(linear_hidden / 4))
         self.actor_linear = nn.Linear(self.linear3.out_features, output_shape[0])
 
@@ -130,20 +120,13 @@ class DDPGActor(DDPG):
         if cuda:
             self.cuda()
 
-    def forward(self, x_numeric: torch.Tensor, depth: torch.Tensor,
-                rgb: torch.Tensor = None, **kwargs) -> object:
+    def forward(self, x_numeric: torch.Tensor, img: torch.Tensor, **kwargs) -> object:
         x_numeric = self.linear(x_numeric)
 
-        x = F.relu(self.maxp1(self.conv_depth(depth)))
-        x = F.relu(self.maxp2(self.conv_depth2(x)))
-        x = F.relu(self.maxp3(self.conv_depth3(x)))
-        x = F.relu(self.maxp4(self.conv_depth4(x)))
-
-        # if self.rgb:
-        #     x_rgb = F.relu(self.maxp1(self.conv_rgb(rgb)))
-        #     x_rgb = F.relu(self.maxp2(self.conv_rgb2(x_rgb)))
-        #     # x_rgb = x_rgb.view(x_rgb.size(0), -1)
-        #     x = torch.cat((x, x_rgb), dim=1)
+        x = F.relu(self.maxp1(self.conv(img)))
+        x = F.relu(self.maxp2(self.conv2(x)))
+        x = F.relu(self.maxp3(self.conv3(x)))
+        x = F.relu(self.maxp4(self.conv4(x)))
 
         x = x.view(x.size(0), -1)
         x = self.linear_conv(x)
@@ -157,10 +140,9 @@ class DDPGActor(DDPG):
 
 #TODO add dict representation
 class DDPGCritic(DDPG):
-    def __init__(self, actor_out_shape, depth_shape, numeric_shape, rgb_shape: bool = None, rgb: bool = False,
-                 cuda: bool = True, linear_hidden: int = 256, conv_hidden: int = 32):
-        super(DDPGCritic, self).__init__(depth_shape=depth_shape, numeric_shape=numeric_shape, rgb_shape=rgb_shape,
-                                         rgb=rgb, linear_hidden=linear_hidden, conv_hidden=conv_hidden)
+    def __init__(self, actor_out_shape, img_shape, numeric_shape, linear_hidden: int = 256, conv_hidden: int = 32, cuda: bool = True):
+        super(DDPGCritic, self).__init__(img_shape=img_shape, numeric_shape=numeric_shape,
+                                         linear_hidden=linear_hidden, conv_hidden=conv_hidden)
 
         self.linear_actor = nn.Linear(actor_out_shape[0], int(linear_hidden / 4))
         self.linear3 = nn.Linear(self.linear_actor.out_features + self.linear2.out_features, int(linear_hidden / 2))
@@ -177,31 +159,24 @@ class DDPGCritic(DDPG):
             self.cuda()
 
     def forward(self, action: torch.Tensor, x_numeric: torch.Tensor,
-                depth: torch.Tensor, rgb: torch.Tensor = None, **kwargs) -> object:
+                img: torch.Tensor, **kwargs) -> object:
+
         x_numeric = self.linear(x_numeric)
 
-        # Adhoc conversion from rgb to depth
-        x = F.relu(self.maxp1(self.conv_depth(depth)))
-        x = F.relu(self.maxp2(self.conv_depth2(x)))
-        x = F.relu(self.maxp3(self.conv_depth3(x)))
-        x = F.relu(self.maxp4(self.conv_depth4(x)))
-
-        # if self.rgb:
-        #     x_rgb = F.relu(self.maxp1(self.conv_depth(rgb)))
-        #     x_rgb = F.relu(self.maxp2(self.conv2(x_rgb)))
-        #     x_rgb = x_rgb.view(x_rgb.size(0), -1)
-        #     x = torch.cat((x, x_rgb), dim=1)
+        x = F.relu(self.maxp1(self.conv(img)))
+        x = F.relu(self.maxp2(self.conv2(x)))
+        x = F.relu(self.maxp3(self.conv3(x)))
+        x = F.relu(self.maxp4(self.conv4(x)))
 
         x = x.view(x.size(0), -1)
         x = self.linear_conv(x)
         x = torch.cat((x_numeric, x), dim=1)
         x = self.linear2(x)
+
         action = action.view(action.size(0), -1)
         action = self.linear_actor(action)
-        # dodaj warstwę liniową dla akcji aktora
         x = torch.cat((action, x), dim=1)
         x = self.linear3(x)
-        # dodaj dodatkową warstwę przed krytykiem
         x = self.critic_linear(x)
 
         return x

@@ -101,7 +101,7 @@ def visdom_log(viz:visdom.Visdom, windows:dict, state:dict, action:dict, reward:
     if 'depth' in state.keys():
         img = state['depth'][-1]
         img = np.moveaxis(img, 2, 0).copy().astype(np.uint8)
-        viz.image(img=img, win=windows['depth'], opts=dict(width=800, height=600))
+        viz.image(img=img, win=windows['img'], opts=dict(width=800, height=600))
 
     if 'rgb' in state.keys():
         img = state['rgb'][-1]

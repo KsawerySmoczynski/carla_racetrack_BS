@@ -109,7 +109,7 @@ def unpack_supervised_batch(batch, device=DEVICE):
 
 class OldToSupervised(object):
     def __call__(self, sample):
-        inputs = [np.array([sample['data'][data] for data in ['distance_2finish', 'velocity', 'collisions']]), sample['data']['depth']]  # + [[np.Nan]]  # - how to add None
+        inputs = [np.array([sample['data'][data] for data in ['distance_2finish', 'velocity', 'collisions']]), sample['data']['img']]  # + [[np.Nan]]  # - how to add None
         inputs = tuple(inputs)
         # inputs = np.array([sample['data'][key] for key in list(sample['data'].keys()) if key not in ['q', 'reward', 'step']])
         actions = np.array([sample['data']['steer'], sample['data']['gas_brake']])
@@ -123,11 +123,11 @@ class ToSupervised(object):
         self.features = features
     def __call__(self, sample):
         x_numeric = np.array([sample['data'][data] for data in self.features])
-        depth = sample['data']['depth']
+        img = sample['data']['img']
         action = np.array([sample['data']['steer'], sample['data']['gas_brake']])
         q = sample['data']['q']
 
-        return {'x_numeric':x_numeric, 'depth':depth, 'action':action, 'q':q}
+        return {'x_numeric':x_numeric, 'img':img, 'action':action, 'q':q}
 
 
 class ToReinforcement(object):
@@ -135,24 +135,61 @@ class ToReinforcement(object):
         pass
 
 
-class ImgsPreprocess(object):
-    def __call__(self, sample):
-        pass
+class DepthSegmentationPreprocess(object):
+    def __init__(self, no_data_points:int, depth_channels:int=3):
+        assert(no_data_points<=4), 'Max datapoints = 4'
+        assert (no_data_points <= 4), 'Max datapoints = 4'
+        assert (isinstance(depth_channels, int)), 'depth_channels has to be int'
+        self.no_data_points = no_data_points
+        self.depth_channels = depth_channels
 
+    def __call__(self, sample):
+        step = max(to_list(sample['data']['depth_indexes']))
+        del sample['data']['depth_indexes']
+        indexes = [idx for idx in range(step-self.no_data_points, step)]
+        depth = load_frames(path=sample['item'][0], sensor='depth',
+                                              indexes=indexes)
+        segmentation = load_frames(path=sample['item'][0], sensor='segmentation',
+                            indexes=indexes)
+        data = [depth_img+seg_img for depth_img,seg_img in zip(depth, segmentation)]
+
+        data_concat = np.concatenate([img.reshape(self.depth_channels, img.shape[0], img.shape[1])
+                                      for img in data], axis=2)
+        data_concat = (data_concat - data_concat.min())
+        data_concat = data_concat / data_concat.max()
+
+        sample['data']['img'] = data_concat
+
+        return sample
 
 class DepthPreprocess(object):
+    def __init__(self, no_data_points:int=4, depth_channels:int=3):
+        assert (no_data_points <= 4), 'Max datapoints = 4'
+        assert(isinstance(depth_channels, int)), 'depth_channels has to be int'
+        self.no_data_points = no_data_points
+        self.depth_channels = depth_channels
+        if self.depth_channels==1:
+            self.convert = lambda x: x.convert('L')
+        elif self.depth_channels == 3:
+            self.convert = lambda x: x.convert('RGB')
+        else:
+            self.convert = lambda x: x
+
     def __call__(self, sample):
         # convert = lambda x: x.convert('L').filter(ImageFilter.FIND_EDGES)
-        convert = lambda x: x.convert('L')
-        sample['data']['depth'] = load_frames(path=sample['item'][0], sensor='depth',
-                                              indexes=to_list(sample['data']['depth_indexes']), convert=convert)
+        # convert = lambda x: x.convert('L')
+        step = max(to_list(sample['data']['depth_indexes']))
+        indexes = [idx for idx in range(step - self.no_data_points, step)]
+        imgs = load_frames(path=sample['item'][0], sensor='img', convert=self.convert,
+                                              indexes=indexes)
         del sample['data']['depth_indexes']
-        # sample['data']['depth'] = np.concatenate([img.reshape(1, img.shape[0], img.shape[1])
-        #                                           for img in sample['data']['depth']], axis=2) / 255.
-        sample['data']['depth'] = np.concatenate([img.reshape(1, img.shape[0], img.shape[1])
-                                                  for img in sample['data']['depth']], axis=2)
+        # sample['data']['img'] = np.concatenate([img.reshape(1, img.shape[0], img.shape[1])
+        #                                           for img in sample['data']['img']], axis=2) / 255.
+        imgs = np.concatenate([img.reshape(self.depth_channels, img.shape[0], img.shape[1])
+                                                  for img in imgs], axis=2)
 
-        # sample['data']['depth'] = sample['data']['depth'] - sample['data']['depth'].mean()
+        imgs = imgs - imgs.min()
+        sample['data']['img'] = imgs / imgs.max()
 
         return sample
 
@@ -163,7 +200,8 @@ class RgbPreprocess(object):
 
 
 class SimpleDataset(Dataset):
-    def __init__(self, ids, features:list=FEATURES_FOR_BATCH, depth:bool=True, rgb:bool=False, transform:list=None, batch_size:int=32):
+    def __init__(self, ids, features:list=FEATURES_FOR_BATCH, depth:bool=True, rgb:bool=False,
+                 segmentation:bool=True, transform:list=None, batch_size:int=32, **kwargs):
         '''
         Klasa przechowuje informacje o ścieżkach i stepach należących do datasetu
         '''
@@ -175,7 +213,8 @@ class SimpleDataset(Dataset):
         self.ids = ids[:-(len(ids) % batch_size)] if ((len(ids) % batch_size) != 0) else ids
         self.dfs = list(set([id[0] for id in ids]))
         self.dfs = {directory:pd.read_csv(f'{directory}/episode_info.csv') for directory in self.dfs}
-        self.features = features + list(filter(lambda x: len(x) > 1, ['depth_indexes'*depth, 'rgb_indexes'*rgb]))
+        self.features = features + list(filter(lambda x: len(x) > 1,
+                                               ['depth_indexes'*depth, 'rgb_indexes'*rgb, 'segmentation_indexes'*segmentation]))
         self.transform = transform if transform else lambda x: x
 
     def __len__(self):

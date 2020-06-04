@@ -8,7 +8,7 @@ import numpy as np
 from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR, CosineAnnealingWarmRestarts
 from torch.utils.data import DataLoader
 
-from config import NUMERIC_FEATURES, DEVICE, DATE_TIME
+from config import NUMERIC_FEATURES, DEVICE, DATE_TIME, SENSORS
 from net.ddpg_net import DDPGActor, DDPGCritic
 
 np.random.seed(48)
@@ -20,7 +20,8 @@ from torchvision import transforms
 from torch import multiprocessing as mp, nn
 from tensorboardX import SummaryWriter
 
-from net.utils import get_paths, DepthPreprocess, ToSupervised, SimpleDataset, unpack_supervised_batch, get_n_params
+from net.utils import get_paths, DepthPreprocess, ToSupervised, SimpleDataset, unpack_supervised_batch, get_n_params, \
+    DepthSegmentationPreprocess
 
 
 #TODO check how pytorch dataloader works and inherit it to build adhoc loading from disk
@@ -30,12 +31,12 @@ from net.utils import get_paths, DepthPreprocess, ToSupervised, SimpleDataset, u
 
 def main(args):
 
+    args = parse_args()
     tag = args.tag
     device = torch.device('cuda:0')
 
     no_epochs = args.epochs
     batch_size = 128
-    depth_shape = [1, 60, 320]
 
     linear_hidden = args.linear
     conv_hidden = args.conv
@@ -44,18 +45,23 @@ def main(args):
     steps = get_paths(as_tuples=True, shuffle=True, tag=tag)
     steps_train, steps_test = steps[:int(len(steps)*.8)], steps[int(len(steps)*.2):]
 
-    dataset_train = SimpleDataset(ids=steps_train, batch_size=batch_size, transform=transforms.Compose([DepthPreprocess(), ToSupervised()]))
-    dataset_test = SimpleDataset(ids=steps_test, batch_size=batch_size, transform=transforms.Compose([DepthPreprocess(), ToSupervised()]))
+    transform = transforms.Compose([DepthSegmentationPreprocess(no_data_points=1), ToSupervised()])
+
+    dataset_train = SimpleDataset(ids=steps_train, batch_size=batch_size, transform=transform, **SENSORS)
+    dataset_test = SimpleDataset(ids=steps_test, batch_size=batch_size, transform=transform, **SENSORS)
 
     dataloader_params = {'batch_size': batch_size, 'shuffle': True, 'num_workers': int(mp.cpu_count())} #we've already shuffled paths
 
     dataset_train = DataLoader(dataset_train, **dataloader_params)
     dataset_test = DataLoader(dataset_test, **dataloader_params)
 
+    batch = next(iter(dataset_test))
+    action_shape = batch['action'][0].shape
+    img_shape = batch['img'][0].shape
     #Nets
-    # net = DDPGActor(depth_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)], output_shape=[2],
+    # net = DDPGActor(img_shape=img_shape, numeric_shape=[len(NUMERIC_FEATURES)], output_shape=[2],
     #                       linear_hidden=linear_hidden, conv_hidden=conv_hidden)
-    net = DDPGCritic(actor_out_shape=[2, ], depth_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)],
+    net = DDPGCritic(actor_out_shape=action_shape, img_shape=img_shape, numeric_shape=[len(NUMERIC_FEATURES)],
                             linear_hidden=linear_hidden, conv_hidden=conv_hidden)
 
     print(len(steps))

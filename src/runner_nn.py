@@ -159,7 +159,7 @@ def run_client(args):
         depth_shape = [1, 60, 320]
         actor_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/20200531_1407/DDPGActor_l128_conv32/train2.pt'
         critic_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/20200531_1315/DDPGCritic_l128_conv32/train.pt'
-        actor_net = DDPGActor(depth_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)],
+        actor_net = DDPGActor(img_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)],
                               output_shape=[2], linear_hidden=args.linear, conv_hidden=args.conv, cuda=False)
         actor_net.load_state_dict(torch.load(actor_path))
         critic_net = DDPGCritic(actor_out_shape=[2, ], depth_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)],
@@ -273,7 +273,7 @@ def run_episode(client:carla.Client, controller:Controller, spawn_points:np.arra
 
         # save_info(path=agent.save_path, state=state, action=action, reward=reward)
 
-        # print(f'step:{step} data:{len(agent.sensors["depth"]["data"])}')
+        # print(f'step:{step} data:{len(agent.sensors["img"]["data"])}')
         #Log
         # if ((agent.velocity < 20) & (step % 10 == 0)) or (step % 50 == 0):
         #     set_spectator_above_actor(spectator, agent.transform)
