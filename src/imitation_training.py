@@ -59,10 +59,10 @@ def main(args):
     action_shape = batch['action'][0].shape
     img_shape = batch['img'][0].shape
     #Nets
-    # net = DDPGActor(img_shape=img_shape, numeric_shape=[len(NUMERIC_FEATURES)], output_shape=[2],
-    #                       linear_hidden=linear_hidden, conv_hidden=conv_hidden)
-    net = DDPGCritic(actor_out_shape=action_shape, img_shape=img_shape, numeric_shape=[len(NUMERIC_FEATURES)],
-                            linear_hidden=linear_hidden, conv_hidden=conv_hidden)
+    net = DDPGActor(img_shape=img_shape, numeric_shape=[len(NUMERIC_FEATURES)], output_shape=[2],
+                          linear_hidden=linear_hidden, conv_hidden=conv_hidden)
+    # net = DDPGCritic(actor_out_shape=action_shape, img_shape=img_shape, numeric_shape=[len(NUMERIC_FEATURES)],
+    #                         linear_hidden=linear_hidden, conv_hidden=conv_hidden)
 
     print(len(steps))
     print(net)
@@ -80,7 +80,7 @@ def main(args):
     optimizer = torch.optim.Adam(net.parameters(), lr=0.002, weight_decay=0.2)
 
     if args.scheduler == 'cos':
-        scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=optim_steps, T_mult=1)
+        scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=optim_steps, T_mult=2)
     elif args.scheduler == 'one_cycle':
         scheduler = OneCycleLR(optimizer, max_lr=0.002, epochs=no_epochs,
                                             steps_per_epoch=optim_steps)
@@ -101,8 +101,8 @@ def main(args):
         for idx, batch in enumerate(iter(dataset_train)):
             global_step = int((len(dataset_train.dataset) / batch_size * epoch_idx) + idx)
             batch = unpack_supervised_batch(batch=batch, device=device)
-            # loss, loss_mean, grad = train(input=batch, label=batch['action'], net=net, optimizer=optimizer, loss_fn=loss_function)
-            loss, loss_mean, grad = train(input=batch, label=batch['q'], net=net, optimizer=optimizer, loss_fn=loss_function)
+            loss, loss_mean, grad = train(input=batch, label=batch['action'], net=net, optimizer=optimizer, loss_fn=loss_function)
+            # loss, loss_mean, grad = train(input=batch, label=batch['q'], net=net, optimizer=optimizer, loss_fn=loss_function)
 
             avg_max_grad += max([element.max() for element in grad])
             avg_avg_grad += sum([element.mean() for element in grad]) / len(grad)
@@ -139,8 +139,8 @@ def main(args):
             for idx, batch in enumerate(iter(dataset_test)):
                 batch = unpack_supervised_batch(batch=batch, device=device)
                 pred = net(**batch)
-                # loss = test_loss_function(pred, batch['action'])
-                loss = test_loss_function(pred.view(-1), batch['q'])
+                loss = test_loss_function(pred, batch['action'])
+                # loss = test_loss_function(pred.view(-1), batch['q'])
 
                 test_loss += loss.item()
 

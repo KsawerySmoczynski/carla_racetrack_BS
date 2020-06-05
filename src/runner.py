@@ -151,7 +151,7 @@ def run_client(args):
         STEPS_AHEAD = args.steps_ahead
         controller = MPCController(target_speed=TARGET_SPEED, steps_ahead=STEPS_AHEAD, dt=0.1)
     elif args.controller is 'NN':
-        depth_shape = [1, 60, 320]
+        depth_shape = [3, 60, 80]
         actor_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/20200531_1407/DDPGActor_l128_conv32/train2.pt'
         critic_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/20200531_1315/DDPGCritic_l128_conv32/train.pt'
         actor_net = DDPGActor(img_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)],

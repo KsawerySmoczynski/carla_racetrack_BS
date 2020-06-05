@@ -14,7 +14,8 @@ from config import SENSORS, FEATURES_FOR_BATCH, DEVICE, NUMERIC_FEATURES
 
 to_list = lambda x: ast.literal_eval(x)
 # img_to_pil = lambda img: Image.fromarray(img, 'RGB').convert('L').filter(ImageFilter.FIND_EDGES)
-img_to_pil = lambda img: Image.fromarray(img, 'RGB').convert('L')
+img_to_pil = lambda img: Image.fromarray(img, 'RGB')
+# img_to_pil = lambda img: Image.fromarray(img, 'RGB').convert('L')
 
 def norm_col_init(weights, std=1.0):
     x = torch.randn(weights.size())

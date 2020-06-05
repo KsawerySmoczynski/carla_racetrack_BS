@@ -11,13 +11,15 @@ from net.utils import img_to_pil
 
 
 class NNController(Controller):
-    def __init__(self, actor_net:DDPGActor, critic_net:DDPGCritic, features:list=NUMERIC_FEATURES, device:str='cuda:0'):
+    def __init__(self, actor_net:DDPGActor, critic_net:DDPGCritic, features:list=NUMERIC_FEATURES, no_data_points:int=4, device:str='cuda:0'):
         super(NNController, self).__init__()
+        assert(no_data_points<=4), 'Max data points = 4'
         self.actor_net = actor_net
         self.critic_net = critic_net
         self.device = torch.device(device)
         self.features = features
         self.transform = transforms.ToTensor()
+        self.no_data_points = no_data_points
 
     def dict(self):
         controller = {'actor_net': self.actor_net.name,
@@ -34,15 +36,17 @@ class NNController(Controller):
         :return:
         '''
         x_numeric = torch.Tensor([state[feature] for feature in self.features]).unsqueeze(0).float().to(self.device)
-        imgs = [self.transform(img_to_pil(img)) for img in state['depth_data']]
-        depth = torch.cat(imgs, dim=2).unsqueeze(0).float().to(self.device)
-        # img = img - img.mean()
+        imgs = [self.transform(img_to_pil(depth))+self.transform(img_to_pil(depth)) for depth, segmentation \
+                in zip(state['depth_data'][:self.no_data_points], state['segmentation_data'][:self.no_data_points])]
+        img = torch.cat(imgs, dim=2).unsqueeze(0).float().to(self.device)
+        img = img - img.min()
+        img = img / img.max()
 
-        return (x_numeric, depth)
+        return {'x_numeric': x_numeric, 'img': img}
 
     def control(self, state, **kwargs):
         input = self.preprocess(state)
-        action = self.actor_net(input).view(-1)
+        action = self.actor_net(**input).view(-1)
         # q_pred = self.critic_net((action, *input)).view(-1)
 
         action = {

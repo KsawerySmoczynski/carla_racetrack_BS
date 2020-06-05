@@ -12,6 +12,7 @@ import torch.multiprocessing as mp
 #Local imports
 from config import IMAGE_DOWNSIZE_FACTOR, FRAMERATE, DATA_PATH, DATE_TIME, SENSORS, INVERSE, DATA_POINTS
 from control.abstract_control import Controller
+from control.nn_control import NNController
 from spawn import sensors_config, numpy_to_transform, velocity_to_kmh, transform_to_numpy, location_to_numpy, \
     to_vehicle_control, control_to_gas_brake
 from utils import to_rgb, to_array, calc_distance, save_img, init_reporting
@@ -296,6 +297,13 @@ class Agent:
         '''
 
         state = self.get_state(step=0, retrieve_data=False)
+        #TODO
+        if isinstance(self.controller, NNController):
+            for sensor in self.sensors.keys():
+                keys = list(state.keys())
+                for key in keys:
+                    if sensor in key:
+                        state[f'{sensor}_data'] = np.zeros((1, 60, 80*self.controller.no_data_points, 3))
 
         # Apply action
         action = self.play_step(state, batch=True)

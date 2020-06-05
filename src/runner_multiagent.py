@@ -6,9 +6,12 @@ import pandas as pd
 import carla
 
 #Local imports
+import torch
 import visdom as vis
 
+from control.nn_control import NNController
 from environment import Agent, Environment
+from net.ddpg_net import DDPGActor, DDPGCritic
 from spawn import df_to_spawn_points, numpy_to_transform, set_spectator_above_actor, configure_simulation
 from control.mpc_control import MPCController
 from control.abstract_control import Controller
@@ -16,7 +19,7 @@ from tensorboardX import SummaryWriter
 
 #Configs
 from config import DATA_PATH, FRAMERATE, TENSORBOARD_DATA, GAMMA, \
-    DATE_TIME, SENSORS, VEHICLES, CARLA_IP, MAP, INVERSE, NO_AGENTS, NEGATIVE_REWARD, DATA_POINTS
+    DATE_TIME, SENSORS, VEHICLES, CARLA_IP, MAP, INVERSE, NO_AGENTS, NEGATIVE_REWARD, DATA_POINTS, NUMERIC_FEATURES
 
 from utils import tensorboard_log, visdom_log, visdom_initialize_windows, init_reporting, save_info, update_Qvals
 
@@ -107,6 +110,20 @@ def main():
         help='steps 2calculate ahead for mpc')
 
     argparser.add_argument(
+        '-c', '--conv',
+        default=64,
+        type=int,
+        dest='conv',
+        help='Conv hidden size')
+
+    argparser.add_argument(
+        '-l', '--linear',
+        default=128,
+        type=int,
+        dest='linear',
+        help='Linear hidden size')
+
+    argparser.add_argument(
         '--no_agents',
         default=NO_AGENTS,
         type=int,
@@ -131,6 +148,7 @@ def run_client(args):
 
     args.host = 'localhost'
     args.port = 2000
+    # args.controller = 'NN'
 
     client = configure_simulation(args)
 
@@ -139,12 +157,29 @@ def run_client(args):
         TARGET_SPEED = args.speed
         STEPS_AHEAD = args.steps_ahead
         controller = MPCController(target_speed=TARGET_SPEED, steps_ahead=STEPS_AHEAD, dt=0.1)
+    elif args.controller is 'NN':
+        depth_shape = [3, 60, 80]
+        # args.linear = 64
+        # args.conv = 64
+        actor_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/20200604_2349/DDPGActor_l64_conv64/test/test.pt'
+        critic_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/20200604_2318/DDPGCritic_l64_conv64/test/test.pt'
+        actor_net = DDPGActor(img_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)],
+                              output_shape=[2], linear_hidden=args.linear, conv_hidden=args.conv, cuda=False)
+        actor_net.load_state_dict(torch.load(actor_path))
+        critic_net = DDPGCritic(actor_out_shape=[2, ], img_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)],
+                            linear_hidden=args.linear, conv_hidden=args.conv, cuda=False)
+        critic_net.load_state_dict(torch.load(critic_path))
+
+        controller = NNController(actor_net=actor_net, critic_net=critic_net, no_data_points=1,
+                                  features=NUMERIC_FEATURES,device='cpu')
 
     for i in range(args.episodes):
         status, save_paths = run_episode(client=client,
                                         controller=controller,
                                         args=args)
-
+        for (actor, status), path in zip(status.items(), save_paths):
+            print(f'Episode {i + 1} actor {actor} ended with status: {status}')
+            print(f'Data saved in: {path}')
 
 
 
@@ -223,7 +258,6 @@ def run_episode(client:carla.Client, controller:Controller, args) -> (dict, dict
 
         for agent, state, action, reward in zip(environment.agents, states, actions, rewards):
             save_info(path=agent.save_path, state=state, action=action, reward=reward)
-
 
         if len(environment.agents) < 1:
             print('fini')
