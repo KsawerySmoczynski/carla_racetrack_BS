@@ -50,7 +50,7 @@ def calc_distance(actor_location:np.array, points_3D:np.array, cut:float=0.02) -
     points_deltas = np.diff(points_3D[skip:], axis=0)
     distance = actor_to_point + np.sqrt((points_deltas**2).sum(axis=1)).sum()
 
-    return round(distance, 4)
+    return round(distance, 5)
 
 
 def visdom_initialize_windows(viz:visdom.Visdom, title:str, sensors:dict, location):
@@ -201,3 +201,10 @@ def plot_gray(img):
     '''
     plt.imshow(img, cmap='gray', vmin=0, vmax=255)
     plt.show()
+
+def arg_bool(arg:str):
+    arg = arg.lower()
+    if arg in ['true', 't', '1', 'y']:
+        return True
+    else:
+        return False

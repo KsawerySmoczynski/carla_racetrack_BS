@@ -1,3 +1,5 @@
+import copy
+
 import numpy as np
 import torch
 from torch import nn
@@ -11,7 +13,8 @@ from net.utils import img_to_pil
 
 
 class NNController(Controller):
-    def __init__(self, actor_net:DDPGActor, critic_net:DDPGCritic, features:list=NUMERIC_FEATURES, no_data_points:int=4, device:str='cuda:0'):
+    def __init__(self, actor_net:DDPGActor, critic_net:DDPGCritic, features:list=NUMERIC_FEATURES,
+                 no_data_points:int=4, train:bool=False, device:str='cuda:0'):
         super(NNController, self).__init__()
         assert(no_data_points<=4), 'Max data points = 4'
         self.actor_net = actor_net
@@ -20,6 +23,9 @@ class NNController(Controller):
         self.features = features
         self.transform = transforms.ToTensor()
         self.no_data_points = no_data_points
+        if train:
+            self.actor_tgt_net = copy.deepcopy(self.actor_net)
+            self.critic_tgt_net = copy.deepcopy(self.critic_net)
 
     def dict(self):
         controller = {'actor_net': self.actor_net.name,
@@ -46,18 +52,38 @@ class NNController(Controller):
 
     def control(self, state, **kwargs):
         input = self.preprocess(state)
-        action = self.actor_net(**input).view(-1)
-        # q_pred = self.critic_net((action, *input)).view(-1)
+        action = self.actor_net(**input).unsqueeze(0)
+        q_pred = self.critic_net(**{'action':action, **input}).view(-1)
+        q_pred = q_pred.cpu().detach().numpy()
+        action = action.cpu().detach().view(-1).numpy()
 
         action = {
             'steer': round(float(action[0]), 3),
             'gas_brake': round(float(action[1]), 3),
-            # 'q_pred': q_pred
+            'q_pred': float(q_pred)
         }
 
         return action
 
+    def alpha_sync(self, alpha):
+        """
+            Method based on https://github.com/Shmuma/ptan/blob/master/ptan/agent.py
+            Blend params of target net with params from the model
+            :param alpha:
+        """
+        assert isinstance(alpha, float)
+        assert 0.0 < alpha <= 1.0
+        actor_state = self.actor_net.state_dict()
+        tgt_state = self.actor_tgt_net.state_dict()
+        for k, v in actor_state.items():
+            tgt_state[k] = tgt_state[k] * alpha + (1 - alpha) * v
+        self.actor_tgt_net.load_state_dict(tgt_state)
 
+        critic_state = self.critic_net.state_dict()
+        tgt_state = self.critic_tgt_net.state_dict()
+        for k, v in critic_state.items():
+            tgt_state[k] = tgt_state[k] * alpha + (1 - alpha) * v
+        self.critic_tgt_net.load_state_dict(tgt_state)
 
 
 # Torch multiprocessing

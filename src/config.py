@@ -18,7 +18,7 @@ EXPERIMENTS_PATH = f'{DATA_PATH}/experiments'
 CARLA_IP = config_dict['carla_ip']
 FRAMERATE = 30
 MAP = 'circut_spa'
-INVERSE = False
+INVERT = False
 DATA_POINTS = 4
 
 VEHICLES = ['vehicle.mini.cooperst']
@@ -38,11 +38,11 @@ SENSORS = {
 
 # RL config
 DEVICE = torch.device('cuda:0')
-NEGATIVE_REWARD = -100
+NEGATIVE_REWARD = 100
 NUMERIC_FEATURES = ['state_steer', 'state_gas_brake','distance_2finish','velocity','collisions']
 FEATURES_FOR_BATCH = ['step',*NUMERIC_FEATURES,'steer','gas_brake','reward','q']
-NO_AGENTS = 2
-GAMMA = .999
+NO_AGENTS = 1
+GAMMA = .9975
 LEARNING_RATE = 0.001
 NUMBER_OF_EPOCHS = 100
 BATCH_SIZE = 20

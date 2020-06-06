@@ -72,13 +72,13 @@ def main(args):
     logging_idx = int(len(dataset_train.dataset) / (batch_size * optim_steps))
 
     writer_train = SummaryWriter(f'{net_path}/train', max_queue=30, flush_secs=5)
-    writer_test = SummaryWriter(f'{net_path}/test', max_queue=1, flush_secs=5)
+    writer_test = SummaryWriter(f'{net_path}/test', max_queue=1, flush_secs=20)
 
     #Optimizers
     optimizer = torch.optim.Adam(net.parameters(), lr=0.002, weight_decay=0.2)
 
     if args.scheduler == 'cos':
-        scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=optim_steps, T_mult=1)
+        scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=optim_steps, T_mult=2)
     elif args.scheduler == 'one_cycle':
         scheduler = OneCycleLR(optimizer, max_lr=0.002, epochs=no_epochs,
                                             steps_per_epoch=optim_steps)
@@ -93,7 +93,6 @@ def main(args):
     for epoch_idx in range(no_epochs):
         train_loss = .0
         running_loss = .0
-        # critic_running_loss = .0
         avg_max_grad = 0.
         avg_avg_grad = 0.
         for idx, batch in enumerate(iter(dataset_train)):

@@ -10,7 +10,7 @@ import torch
 import torch.multiprocessing as mp
 
 #Local imports
-from config import IMAGE_DOWNSIZE_FACTOR, FRAMERATE, DATA_PATH, DATE_TIME, SENSORS, INVERSE, DATA_POINTS
+from config import IMAGE_DOWNSIZE_FACTOR, FRAMERATE, DATA_PATH, DATE_TIME, SENSORS, INVERT, DATA_POINTS
 from control.abstract_control import Controller
 from control.nn_control import NNController
 from spawn import sensors_config, numpy_to_transform, velocity_to_kmh, transform_to_numpy, location_to_numpy, \
@@ -22,7 +22,8 @@ from utils import to_rgb, to_array, calc_distance, save_img, init_reporting
 # https://github.com/drj11/pypng/
 
 class Agent:
-    def __init__(self, world:carla.World, controller:Controller, vehicle:str, sensors:dict, spawn_points:np.array, spawn_point_idx:int=None, no_data_points:int=DATA_POINTS):
+    def __init__(self, world:carla.World, controller:Controller, vehicle:str, sensors:dict,
+                 spawn_points:np.array, spawn_point_idx:int=None, no_data_points:int=DATA_POINTS, invert:bool=False):
         '''
         All of the default data is stored in the form of numpy array,
         transforms to other formats are performed ad hoc.
@@ -35,7 +36,7 @@ class Agent:
         :param no_data_points:int,
         '''
         self.world = world
-        self.map = world.get_map().name
+        self.map = f'{world.get_map().name}{"_invert"*invert}'
         self.actor:carla.Vehicle = self.world.get_blueprint_library().find(vehicle)
         self.date_time = datetime.datetime.now().strftime("%Y%m%d_%H%M")
         self.controller = controller
@@ -46,6 +47,7 @@ class Agent:
         self.initialized = False
         self.sensors_initialized = False
         self.no_data_points = no_data_points
+        self.initial_distance = calc_distance(self.spawn_point[:3], self.waypoints)
 
     def __str__(self) -> str:
         return f'{self.controller.__class__.__name__}_{"_".join(self.sensors.keys())}_{self.spawn_point_idx}'
@@ -64,7 +66,7 @@ class Agent:
 
     @property
     def save_path(self) -> str:
-        return f'{DATA_PATH}/experiments/{self.map}{"_inverse"*INVERSE}/{self.date_time}/{self.__str__()}'
+        return f'{DATA_PATH}/experiments/{self.map}/{self.date_time}/{self.__str__()}'
 
     @property
     def transform(self):
@@ -129,7 +131,7 @@ class Agent:
                 self._release_data(sensor=sensor, step=state['step'])
 
         collision = sum(self.sensors['collisions']['data'])
-        state['collisions'] = collision if collision > 2_500 else 0
+        state['collisions'] = collision if collision > 2_000 else 0
         control = self.actor.get_control()
         state['state_steer'] = control.steer
         state['state_gas_brake'] = control_to_gas_brake(control)
@@ -137,8 +139,9 @@ class Agent:
         state['velocity_vec'] = list(self.velocity_vec)
         state['yaw'] = self.transform[3] #hardcoded thats bad
         state['location'] = list(self.location)
-        state['distance_2finish'] = calc_distance(actor_location=state['location'],
-                                                  points_3D=self.waypoints)
+        distance_as_proportion = calc_distance(actor_location=state['location'],points_3D=self.waypoints) \
+                                 / self.initial_distance * 10000
+        state['distance_2finish'] = distance_as_proportion
 
 
 
@@ -297,7 +300,6 @@ class Agent:
         '''
 
         state = self.get_state(step=0, retrieve_data=False)
-        #TODO
         if isinstance(self.controller, NNController):
             for sensor in self.sensors.keys():
                 keys = list(state.keys())
@@ -305,13 +307,14 @@ class Agent:
                     if sensor in key:
                         state[f'{sensor}_data'] = np.zeros((1, 60, 80*self.controller.no_data_points, 3))
 
+        state_keys = [key for key in state.keys() if 'data' not in key]
         # Apply action
         action = self.play_step(state, batch=True)
 
         if len(self.save_path.split('/')) > 1:
             os.makedirs(name='/'.join(self.save_path.split('/')), exist_ok=True)
 
-        keys = list({**state, **action}.keys())
+        keys = state_keys + list(action.keys())
         header = ','.join([f'{k}' for k in keys])
         header = f'{header},reward\n'
 
@@ -505,6 +508,6 @@ class Environment:
         state_distance = calc_distance(actor_location=state['location'], points_3D=points_3D)
         next_distance = calc_distance(actor_location=next_state['location'], points_3D=points_3D)
 
-        reward = (((state_distance - 1e-50) / next_distance) - 1) * 100 *  (gamma ** step) - punishment
+        reward = (((state_distance - 1e-50) / next_distance) - 1) * 100 * (gamma ** step) - punishment
 
         return reward

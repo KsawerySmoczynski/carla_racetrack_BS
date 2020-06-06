@@ -18,16 +18,16 @@ velocity_to_kmh = lambda v: float(3.6 * np.math.sqrt(v.x ** 2 + v.y ** 2 + v.z *
 numpy_to_velocity_vec = lambda v: carla.Vector3D(x=v[0], y=v[1], z=v[2])
 
 
-def df_to_spawn_points(data: pd.DataFrame, n:int=10000, inverse:bool=False) -> np.array:
+def df_to_spawn_points(data: pd.DataFrame, n:int=10000, invert:bool=False) -> np.array:
     '''
     Method converting spawnpoints loaded from DataFrame into equally placed points on the map.
     :param data:pd.Dataframe, handcrafted points in tabular form
     :param n:int number of consecutive generated points
-    :param inverse: if to inverse direction of the racetrack
+    :param invert: if to inverse direction of the racetrack
     :return:np.array
     '''
     pts_3D = data[['x', 'y', 'z']].values
-    if inverse:
+    if invert:
         pts_3D = np.flipud(pts_3D)
     pts_3D = pts_3D.T
     tck, u = splprep(pts_3D, u=None, s=1.5, per=1, k=2)
@@ -79,8 +79,9 @@ def to_vehicle_control(gas_brake:float, steer:float) -> carla.VehicleControl:
     :param steer:float in range <-1,1>
     :return: carla.VehicleControl
     '''
-
-    if gas_brake > 0.0:
+    if abs(steer) < .02:
+        steer = .0
+    if gas_brake > .0:
         return carla.VehicleControl(throttle=gas_brake, steer=steer, reverse=False)
     else:
         return carla.VehicleControl(throttle=0, brake=gas_brake, steer=steer, reverse=False)

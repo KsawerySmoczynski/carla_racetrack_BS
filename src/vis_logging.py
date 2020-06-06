@@ -8,7 +8,7 @@ import visdom as vis
 from PIL import Image
 from ast import literal_eval
 
-from config import DATE_TIME, SENSORS, EXPERIMENTS_PATH, MAP, INVERSE
+from config import DATE_TIME, SENSORS, EXPERIMENTS_PATH, MAP, INVERT
 
 """
 The idea of the visdom usage for ongoing models is calling vis_initialize_windows() and saving the windows,
@@ -130,10 +130,10 @@ def main():
 
     visdom = vis.Visdom(port=6006)
 
-    date = sorted(os.listdir(f'{EXPERIMENTS_PATH}/{MAP}{"_inverse"*INVERSE}'))[-1]
-    experiment = sorted(os.listdir(f'{EXPERIMENTS_PATH}/{MAP}{"_inverse"*INVERSE}/{date}'))[-1]
-    controller = sorted(os.listdir(f'{EXPERIMENTS_PATH}/{MAP}{"_inverse"*INVERSE}/{date}/{experiment}'))[-1]
-    vis_run(visdom=visdom, data_path=f'{EXPERIMENTS_PATH}/{MAP}{"_inverse"*INVERSE}/{date}/{experiment}/{controller}')
+    date = sorted(os.listdir(f'{EXPERIMENTS_PATH}/{MAP}{"_inverse" * INVERT}'))[-1]
+    experiment = sorted(os.listdir(f'{EXPERIMENTS_PATH}/{MAP}{"_inverse" * INVERT}/{date}'))[-1]
+    controller = sorted(os.listdir(f'{EXPERIMENTS_PATH}/{MAP}{"_inverse" * INVERT}/{date}/{experiment}'))[-1]
+    vis_run(visdom=visdom, data_path=f'{EXPERIMENTS_PATH}/{MAP}{"_inverse" * INVERT}/{date}/{experiment}/{controller}')
 
 if __name__ == '__main__':
     try:

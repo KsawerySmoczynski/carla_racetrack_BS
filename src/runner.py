@@ -59,7 +59,7 @@ def main():
         default=MAP,
         help='Avialable maps: "circut_spa", "RaceTrack", "Racetrack2". Default: "circut_spa"')
     argparser.add_argument(
-        '--inverse',
+        '--invert',
         default=False,
         type=bool,
         help='Inverts the track')
@@ -189,7 +189,7 @@ def run_episode(client:carla.Client, controller:Controller, args) -> (str, str):
     NUM_STEPS = args.num_steps
 
     spawn_points_df = pd.read_csv(f'{DATA_PATH}/spawn_points/{args.map}.csv')
-    spawn_points = df_to_spawn_points(spawn_points_df, n=10000, inverse=args.inverse)
+    spawn_points = df_to_spawn_points(spawn_points_df, n=10000, invert=args.inverse)
 
     environment = Environment(client=client)
     world = environment.reset_env(args)
