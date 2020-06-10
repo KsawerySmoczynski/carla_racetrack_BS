@@ -75,16 +75,16 @@ def main(args):
     writer_test = SummaryWriter(f'{net_path}/test', max_queue=1, flush_secs=5)
 
     #Optimizers
-    optimizer = torch.optim.Adam(net.parameters(), lr=0.002, weight_decay=0.2)
+    optimizer = torch.optim.Adam(net.parameters(), lr=0.001, weight_decay=0.0005)
 
     if args.scheduler == 'cos':
-        scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=optim_steps, T_mult=1)
+        scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=optim_steps, T_mult=2)
     elif args.scheduler == 'one_cycle':
-        scheduler = OneCycleLR(optimizer, max_lr=0.002, epochs=no_epochs,
+        scheduler = OneCycleLR(optimizer, max_lr=0.001, epochs=no_epochs,
                                             steps_per_epoch=optim_steps)
 
     #Loss function
-    loss_function = torch.nn.MSELoss(reduction='none')
+    loss_function = torch.nn.MSELoss(reduction='sum')
     test_loss_function = torch.nn.MSELoss(reduction='sum')
 
     best_train_loss = 1e10
@@ -99,17 +99,17 @@ def main(args):
         for idx, batch in enumerate(iter(dataset_train)):
             global_step = int((len(dataset_train.dataset) / batch_size * epoch_idx) + idx)
             batch = unpack_supervised_batch(batch=batch, device=device)
-            loss, loss_mean, grad = train(input=batch, label=batch['action'], net=net, optimizer=optimizer, loss_fn=loss_function)
-            # loss, loss_mean, grad = train(input=batch, label=batch['q'], net=net, optimizer=optimizer, loss_fn=loss_function)
+            loss, grad = train(input=batch, label=batch['action'], net=net, optimizer=optimizer, loss_fn=loss_function)
+            # loss, grad = train(input=batch, label=batch['q'], net=net, optimizer=optimizer, loss_fn=loss_function)
 
             avg_max_grad += max([element.max() for element in grad])
             avg_avg_grad += sum([element.mean() for element in grad]) / len(grad)
 
-            running_loss += loss_mean.item()
-            train_loss += loss_mean.item()
+            running_loss += loss
+            train_loss += loss
 
             writer_train.add_scalar(tag=f'{net.name}/running_loss',
-                                          scalar_value=loss_mean.item(),
+                                          scalar_value=loss,
                                           global_step=global_step)
             writer_train.add_scalar(tag=f'{net.name}/max_grad', scalar_value=avg_max_grad,
                                           global_step=global_step)
@@ -129,7 +129,7 @@ def main(args):
                 avg_avg_grad = 0.
                 scheduler.step()
 
-        print(f'Actor best train loss for epoch {epoch_idx+1} - {best_train_loss}')
+        print(f'{net.name} best train loss for epoch {epoch_idx+1} - {best_train_loss}')
         writer_train.add_scalar(tag=f'{net.name}/global_loss', scalar_value=train_loss/len(dataset_train),
                                       global_step=(epoch_idx+1))
         test_loss = .0
@@ -140,11 +140,12 @@ def main(args):
                 loss = test_loss_function(pred, batch['action'])
                 # loss = test_loss_function(pred.view(-1), batch['q'])
 
-                test_loss += loss.item()
+                test_loss += loss
 
         if (test_loss / len(dataset_test)) < best_test_loss:
             best_test_loss = (test_loss / len(dataset_test))
-            torch.save(net.state_dict(), f'{net_path}/test/test.pt')
+
+        torch.save(net.state_dict(), f'{net_path}/test/test_{epoch_idx+1}.pt')
 
         print(f'{net.name} test loss {(test_loss/len(dataset_test)):.3f}')
         print(f'{net.name} best test loss {best_test_loss:.3f}')
@@ -181,13 +182,14 @@ def train(input:dict, label:torch.Tensor, net:nn.Module, optimizer:torch.optim.O
     optimizer.zero_grad()
     y_pred = net(**input).view(-1)
     loss = loss_fn(y_pred, label.view(-1))
-    loss_weighted = (loss * (loss / loss.sum())).sum().mean()
-    loss_weighted.backward()
+    loss.backward()
+    # loss_weighted = (loss * (loss / (loss.sum()/2))).sum().mean()
+    # loss_weighted.backward()
     nn.utils.clip_grad_value_(net.parameters(), 1.5)
     grad = [p.detach().cpu().abs() for p in net.parameters()]
     optimizer.step()
 
-    return loss_weighted, loss.cpu().detach().mean(), grad
+    return loss.detach().cpu(), grad
 
 
 def parse_args():

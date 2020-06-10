@@ -2,15 +2,16 @@ import ast
 import copy
 import os
 import random
+from itertools import chain, cycle, islice
+
 import torch
 import numpy as np
 import pandas as pd
 from PIL import Image, ImageFilter
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader, IterableDataset
 from torchvision import transforms
 
 from config import SENSORS, FEATURES_FOR_BATCH, DEVICE, NUMERIC_FEATURES
-
 
 to_list = lambda x: ast.literal_eval(x)
 # img_to_pil = lambda img: Image.fromarray(img, 'RGB').convert('L').filter(ImageFilter.FIND_EDGES)
@@ -21,6 +22,7 @@ def norm_col_init(weights, std=1.0):
     x = torch.randn(weights.size())
     x *= std / torch.sqrt((x**2).sum(1, keepdim=True))
     return x
+
 
 def weights_init(m, cuda:bool = True):
     classname = m.__class__.__name__
@@ -163,6 +165,7 @@ class DepthSegmentationPreprocess(object):
 
         return sample
 
+
 class DepthPreprocess(object):
     def __init__(self, no_data_points:int=4, depth_channels:int=3):
         assert (no_data_points <= 4), 'Max datapoints = 4'
@@ -206,9 +209,10 @@ class SimpleDataset(Dataset):
         '''
         Klasa przechowuje informacje o ścieżkach i stepach należących do datasetu
         '''
+
         assert isinstance(ids, (list, tuple, type(np.array([])))), 'Ids should be an array of tuples (dir,  step)'
         assert isinstance(ids[0], (list, tuple, type(np.array([])))) and len(ids[0]) == 2, 'Element of ids should be an array, list or tuple containing 2 elements'
-
+        super(SimpleDataset, self).__init__()
         # for idx in [random.randint(0, len(ids)) for i in range(len(ids) % batch_size)]:
         #     ids.pop(idx)
         self.ids = ids[:-(len(ids) % batch_size)] if ((len(ids) % batch_size) != 0) else ids
@@ -341,28 +345,161 @@ class BufferedAdHocDataset(Dataset):
         return self.buffer[np.random.randint(0, len(self), size=(batch_size))]
 
 
-class TargetNet:
-    """
-    Class borrowed from ptan library: https://github.com/Shmuma/ptan/blob/master/ptan/agent.py
-    Wrapper around model which provides copy of it instead of trained weights
-    """
-    def __init__(self, model):
-        self.model = model
-        self.target_model = copy.deepcopy(model)
+class ReplayBuffer:
+    '''
+        TODO https://github.com/pytorch/pytorch/blob/master/torch/utils/data/_utils/collate.py
 
-    def sync(self):
-        self.target_model.load_state_dict(self.model.state_dict())
+        Class inspired with ptan
+        https://github.com/Shmuma/ptan/blob/049ff123f5967eaeeaa268684e13e5aec5029d9f/ptan/experience.py
+    '''
+    def __init__(self, capacity, features:list=FEATURES_FOR_BATCH, depth:bool=True, rgb:bool=False,
+                 segmentation:bool=True, transform:list=None, batch_size:int=32, **kwargs):
+        self.capacity = capacity
+        self.buffer = []
+        self.dfs = {}
+        self.features = features + list(filter(lambda x: len(x) > 1,
+                                               ['depth_indexes' * depth, 'rgb_indexes' * rgb,
+                                                'segmentation_indexes' * segmentation]))
+        self.transform = transform if transform else lambda x: x
+        self.pos = 0
 
-    def alpha_sync(self, alpha):
-        """
-        Blend params of target net with params from the model
-        :param alpha:
-        """
-        assert isinstance(alpha, float)
-        assert 0.0 < alpha <= 1.0
-        state = self.model.state_dict()
-        tgt_state = self.target_model.state_dict()
-        for k, v in state.items():
-            tgt_state[k] = tgt_state[k] * alpha + (1 - alpha) * v
-        self.target_model.load_state_dict(tgt_state)
+
+    def __len__(self):
+        return len(self.buffer)
+
+    def __iter__(self):
+        #TODO
+        #generator yielding transformed samples with size of batches
+        return iter(self.buffer)
+
+    def __getitem__(self, idx):
+        try:
+            #Return example with idx based on dataframe, transformed -> state
+            #Return example with based on dataframe idx +1 , transformed -> state + 1
+            pass
+        except:
+            #idx-1 from buffer
+            pass
+    @property
+    def df_paths(self):
+            return list(set([sample[0] for sample in self.buffer]))
+
+    def add_step(self, path:str, step:pd.Series):
+        self._add((path, step['step']))
+        if path in self.dfs.keys():
+            self.dfs[path].append(step)
+        else:
+            self.dfs[path] = step
+
+    def _load_dfs(self, prievous=[]):
+        '''
+        Reloading DFs utilized by buffer
+        :param prievous:
+        :return:
+        '''
+        paths = self.df_paths
+
+        for path in prievous:
+            if path not in paths:
+                self.dfs.pop(path)
+
+        for path in paths:
+            if path not in prievous:
+                self.dfs[path] = pd.read_csv(f'{path}/episode_info.csv')
+
+
+    def _add(self, sample):
+        if len(self.buffer) < self.capacity:
+            self.buffer.append(sample)
+        else:
+            self.buffer[self.pos] = sample
+        self.pos = (self.pos + 1) % self.capacity
+
+    def _add_bulk(self, samples):
+        for sample in samples:
+            if len(self.buffer) < self.capacity:
+                self.buffer.append(sample)
+            else:
+                self.buffer[self.pos] = sample
+            self.pos = (self.pos + 1) % self.capacity
+
+        # assert self.capacity >= len(samples), 'Can\'t add more than max capacity of buffer'
+        #
+        # if len(samples) <= self.capacity - len(self.buffer):
+        #     self.buffer += samples
+        #     self.pos = (self.pos + len(samples)) % self.capacity
+        # else:
+        #     TODO BAAAAAAD
+            # cut_idx = self.capacity - self.pos + 1
+            # self.buffer[self.pos:] = samples[:cut_idx]
+            # self.buffer[:len(samples)-cut_idx] = samples[:len(samples) - cut_idx]
+            # print(len(samples), cut_idx)
+            # self.pos = len(samples)-cut_idx
+
+    def sample(self, batch_size):
+        if len(self.buffer) <= batch_size:
+            return self.buffer
+        keys = np.random.choice(len(self.buffer), batch_size, replace=True)
+        return [self.buffer[key] for key in keys]
+
+
+class PrioritizedReplayBuffer(ReplayBuffer):
+    '''
+    Class inspired with ptan
+    https://github.com/Shmuma/ptan/blob/049ff123f5967eaeeaa268684e13e5aec5029d9f/ptan/experience.py
+    '''
+    def __init__(self, experience_source, buffer_size, alpha):
+        super(PrioritizedReplayBuffer, self).__init__(experience_source, buffer_size)
+        assert alpha > 0
+        self._alpha = alpha
+
+        it_capacity = 1
+        while it_capacity < buffer_size:
+            it_capacity *= 2
+
+        self._it_sum = utils.SumSegmentTree(it_capacity)
+        self._it_min = utils.MinSegmentTree(it_capacity)
+        self._max_priority = 1.0
+
+    def _add(self, *args, **kwargs):
+        idx = self.pos
+        super()._add(*args, **kwargs)
+        self._it_sum[idx] = self._max_priority ** self._alpha
+        self._it_min[idx] = self._max_priority ** self._alpha
+
+    def _sample_proportional(self, batch_size):
+        res = []
+        for _ in range(batch_size):
+            mass = random.random() * self._it_sum.sum(0, len(self) - 1)
+            idx = self._it_sum.find_prefixsum_idx(mass)
+            res.append(idx)
+        return res
+
+    def sample(self, batch_size, beta):
+        assert beta > 0
+
+        idxes = self._sample_proportional(batch_size)
+
+        weights = []
+        p_min = self._it_min.min() / self._it_sum.sum()
+        max_weight = (p_min * len(self)) ** (-beta)
+
+        for idx in idxes:
+            p_sample = self._it_sum[idx] / self._it_sum.sum()
+            weight = (p_sample * len(self)) ** (-beta)
+            weights.append(weight / max_weight)
+        weights = np.array(weights, dtype=np.float32)
+        samples = [self.buffer[idx] for idx in idxes]
+        return samples, idxes, weights
+
+    def update_priorities(self, idxes, priorities):
+        assert len(idxes) == len(priorities)
+        for idx, priority in zip(idxes, priorities):
+            assert priority > 0
+            assert 0 <= idx < len(self)
+            self._it_sum[idx] = priority ** self._alpha
+            self._it_min[idx] = priority ** self._alpha
+
+            self._max_priority = max(self._max_priority, priority)
+
 

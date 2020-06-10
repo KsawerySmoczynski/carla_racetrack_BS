@@ -10,6 +10,7 @@ import torch
 from control.nn_control import NNController
 from environment import Environment
 from net.ddpg_net import DDPGActor, DDPGCritic
+from net.utils import ReplayBuffer, get_paths, train_on_batch
 from spawn import df_to_spawn_points, numpy_to_transform, configure_simulation
 from control.mpc_control import MPCController
 from control.abstract_control import Controller
@@ -17,7 +18,7 @@ from control.abstract_control import Controller
 
 #Configs
 from config import DATA_PATH, FRAMERATE, GAMMA, SENSORS, VEHICLES, \
-    CARLA_IP, MAP, NO_AGENTS, NEGATIVE_REWARD, DATA_POINTS, NUMERIC_FEATURES
+    CARLA_IP, MAP, NO_AGENTS, NEGATIVE_REWARD, DATA_POINTS, NUMERIC_FEATURES, FEATURES_FOR_BATCH, BATCH_SIZE
 
 from utils import save_info, update_Qvals, arg_bool
 
@@ -160,8 +161,8 @@ def run_client(args):
     elif args.controller == 'NN':
         depth_shape = [3, 60, 80]
 
-        actor_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/20200605_1854/DDPGActor_l64_conv64/test/test.pt'
-        critic_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/20200604_2318/DDPGCritic_l64_conv64/test/test.pt'
+        actor_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/20200607_0017/DDPGActor_l64_conv64/test/test_10.pt'
+        critic_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/20200606_2208/DDPGCritic_l64_conv64/test/test_13.pt'
         actor_net = DDPGActor(img_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)],
                               output_shape=[2], linear_hidden=args.linear, conv_hidden=args.conv, cuda=True)
         actor_net.load_state_dict(torch.load(actor_path))
@@ -170,24 +171,45 @@ def run_client(args):
         critic_net.load_state_dict(torch.load(critic_path))
 
         controller = NNController(actor_net=actor_net, critic_net=critic_net, no_data_points=1,
-                                  features=NUMERIC_FEATURES, train=True, device='cuda:0')
+                                  features=NUMERIC_FEATURES, train=False, device='cuda:0')
     else:
         print(args.controller)
         controller = None
         print('Unsuccesfull choice of controller, aborting')
         exit(1)
 
+    #TODO
+    # Initialize replay buffer
+    # Remember currently loaded dfs
+    transform = None #TODO define
+    buffer = None
+    # buffer = ReplayBuffer(capacity=100_000, features=FEATURES_FOR_BATCH, transform=transform,
+    #                       batch_size=BATCH_SIZE, **SENSORS)
+    # tag=None
+    # samples = get_paths(as_tuples=True, shuffle=True, sensors=SENSORS, tag=None)
+    # buffer._add_bulk(samples=samples)
+    # prievous = []
     for i in range(args.episodes):
-        status, save_paths = run_episode(client=client,
+        #TODO
+        # Compare remembered dfs with those in buffer -> set from buffer
+        #       * existing ones remain
+        #       * if df is in remembered but not in the buffer eliminate it from dfs
+        #       * if df is not remembered but in the buffer delete it from the dfs and reload it from disk
+        # buffer._load_dfs(prievous=prievous)
+        # prievous = buffer.df_paths
+        # print(buffer.pos)
+        buffer, status, save_paths = run_episode(client=client,
                                         controller=controller,
+                                        buffer=buffer,
                                         args=args)
+
         for (actor, status), path in zip(status.items(), save_paths):
             print(f'Episode {i + 1} actor {actor} ended with status: {status}')
             print(f'Data saved in: {path}')
 
 
 
-def run_episode(client:carla.Client, controller:Controller, args) -> (dict, dict):
+def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer, args) -> (ReplayBuffer, dict, dict):
     '''
     Runs single episode. Configures world and agent, spawns it on map and controlls it from start point to termination
     state.
@@ -204,6 +226,7 @@ def run_episode(client:carla.Client, controller:Controller, args) -> (dict, dict
              env_dict -> consecutive locations of actor, distances to closest spawn point, starting spawn point
              array[np.array] -> photos
     '''
+
     NUM_STEPS = args.num_steps
     spawn_points_df = pd.read_csv(f'{DATA_PATH}/spawn_points/{args.map}.csv')
     spawn_points = df_to_spawn_points(spawn_points_df, n=10000, invert=args.invert)
@@ -228,8 +251,7 @@ def run_episode(client:carla.Client, controller:Controller, args) -> (dict, dict
     for agent in environment.agents:
         agent._release_control()
         print(f'{agent} control released')
-    save_paths = [agent.save_path for agent in environment.agents]
-    #TODO dump agent dict as json
+    save_paths = [agent.save_path for i in range(len(environment.agents))]
 
     status = dict({str(agent): 'Max steps exceeded' for agent in environment.agents})
     slow_frames = [0 for agent in environment.agents]
@@ -243,62 +265,88 @@ def run_episode(client:carla.Client, controller:Controller, args) -> (dict, dict
 
         next_states = [{'velocity': agent.velocity,'location': agent.location} for agent in environment.agents]
 
-        # rewards = [environment.calc_reward(points_3D=agent.waypoints, state=state, next_state=next_state,
-        #                                    gamma=GAMMA, step=step, punishment=NEGATIVE_REWARD/agent.initial_distance)
-        #            for agent, state, next_state in zip(environment.agents, states, next_states)]
         rewards = []
         for agent, state, next_state in zip(environment.agents, states, next_states):
             reward = environment.calc_reward(points_3D=agent.waypoints, state=state, next_state=next_state,
                                     gamma=GAMMA, step=step, punishment=NEGATIVE_REWARD/agent.initial_distance)
             rewards.append(reward)
 
-        for idx, (state, agent) in enumerate(zip(states, environment.agents)):
+        for idx, (state, action, reward, agent) in enumerate(zip(states, actions, rewards, environment.agents)):
             if state['distance_2finish'] < 50:
                 print(f'agent {str(agent)} finished the race in {step} steps car {args.vehicle}')
-                save_info(path=agent.save_path, state=state, action=action, reward=0)
+                step_info = save_info(path=agent.save_path, state=state, action=action, reward=0)
+                # step_info = save_info(path=agent.save_path, state=state, action=action, reward=0, done=1)
+                # buffer.add_step(path=agent.save_path, step=step_info)
                 status[str(agent)] = 'Finished'
                 agent.destroy(data=True, step=step)
                 environment.agents.pop(idx)
 
-            if state['collisions'] > 0:
+            elif state['collisions'] > 0:
                 print(f'failed, collision {str(agent)} at step {step}, car {args.vehicle}')
-                save_info(path=agent.save_path, state=state, action=action,
+                step_info = save_info(path=agent.save_path, state=state, action=action,
                           reward=reward - NEGATIVE_REWARD * (GAMMA ** step))
+                # step_info = save_info(path=agent.save_path, state=state, action=action,
+                #           reward=reward - NEGATIVE_REWARD * (GAMMA ** step), done=1)
+                # buffer.add_step(path=agent.save_path, step=step_info)
                 status[str(agent)] = 'Collision'
                 agent.destroy(data=True, step=step)
                 environment.agents.pop(idx)
 
-            if state['velocity'] < 10:
-                if slow_frames[idx] > 115:
+            elif state['velocity'] < 10:
+                if slow_frames[idx] > 100:
                     print(f'agent {str(agent)} stuck, finish on step {step}, car {args.vehicle}')
-                    df = pd.read_csv(f'{agent.save_path}/episode_info.csv').iloc[:-85,:]
-                    df.to_csv(f'{agent.save_path}/episode_info.csv', index=False)
-                    state['step'] = step-85
-                    save_info(path=agent.save_path, state=state, action=action,
-                              reward=reward - NEGATIVE_REWARD * (GAMMA ** (step - 85)))
+                    # df = pd.read_csv(f'{agent.save_path}/episode_info.csv').iloc[:-70,:]
+                    # Find max diff between consecutive speeds and cut there it will be your idx
+                    # df.to_csv(f'{agent.save_path}/episode_info.csv', index=False)
+                    # state['step'] = step-70
+                    state['collisions'] = 2500
+                    step_info = save_info(path=agent.save_path, state=state, action=action,
+                              reward=reward - NEGATIVE_REWARD * (GAMMA ** step))
+                    # step_info = save_info(path=agent.save_path, state=state, action=action,
+                    #           reward=reward - NEGATIVE_REWARD * (GAMMA ** step), done=1)
+                    # buffer.add_step(path=agent.save_path, step=step_info)
                     status[str(agent)] = 'Stuck'
                     agent.destroy(data=True, step=step)
                     environment.agents.pop(idx)
                 slow_frames[idx] += 1
 
-        for agent, state, action, reward in zip(environment.agents, states, actions, rewards):
-            save_info(path=agent.save_path, state=state, action=action, reward=reward)
+            else:
+                # step_info = save_info(path=agent.save_path, state=state, action=action, reward=reward, done=0)
+                step_info = save_info(path=agent.save_path, state=state, action=action, reward=reward)
+                # buffer.add_step(path=agent.save_path, step=step_info)
+
+        #TODO
+        # * sample batch * no_agents
+        # *
+        # if args.controller == 'NN':
+        #     batch = buffer.sample(batch_size=32)
+        #     actor_loss_v, critic_loss_v, q_ref_v = controller.train_on_batch(batch=batch, gamma=GAMMA)
+            #All lossess add to local tracker
+            #Add losses for averaging to global tracker
+
 
         if len(environment.agents) < 1:
             print('fini')
             break
 
+
+
     if len(environment.agents) > 1:
         for agent in environment.agents:
             agent.destroy(data=True, step=NUM_STEPS)
 
-    for agent_path, slow_frames in zip(save_paths, slow_frames):
-        update_Qvals(path=agent_path)
+    for (agent, info), path in zip(status.items(), save_paths):
+        if info is 'Max steps exceeded':
+            df = pd.read_csv(f'{path}/episode_info.csv')
+            df.loc[len(df),'reward'] = NEGATIVE_REWARD * (GAMMA ** NUM_STEPS)
+            # ADD FINAL STATE -> copy of last one.
+            df.to_csv(f'{path}/episode_info.csv', index=False)
+        update_Qvals(path=path)
 
     world.tick()
     world.tick()
 
-    return status, save_paths
+    return buffer, status, save_paths
 
 
 if __name__ == '__main__':

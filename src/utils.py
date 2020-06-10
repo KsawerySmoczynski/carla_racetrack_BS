@@ -166,7 +166,7 @@ def init_reporting(path:str, sensors:dict) -> None:
     print('Init succesfull')
 
 
-def save_info(path:str, state:dict, action:dict, reward:float) -> None:
+def save_info(path:str, state:dict, action:dict, reward:float, done:int=0) -> pd.DataFrame:
     '''
     Appends information after every step about state, actions and received reward
     :param path: str, path to experiment folder
@@ -175,11 +175,22 @@ def save_info(path:str, state:dict, action:dict, reward:float) -> None:
     :param reward: float, reward value
     :return: None
     '''
-    info = {**state, **action, 'reward':reward}
+    info = {**state, **action, 'reward':reward, 'done':done}
+    # info = {**state, **action, 'reward':reward}
     info = pd.DataFrame().from_dict({k:[v] for k,v in info.items() if 'data' not in k})
-    info = info.to_csv(index=False, header=False)
+    info_csv = info.to_csv(index=False, header=False)
     with open(f'{path}/episode_info.csv', 'a') as file:
-        file.write(info)
+        file.write(info_csv)
+
+    return info
+
+
+def save_terminal_state(path:str, state:dict, action:dict):
+    action['steer'] = 0.
+    action['gas_brake'] = 0.
+    if 'q_pred' in list(action.keys()):
+        action['q_pred'] = 0.
+    save_info(path=path, state=state, action=action, reward=0, done=1)
 
 
 def update_Qvals(path:str) -> None:
@@ -202,9 +213,37 @@ def plot_gray(img):
     plt.imshow(img, cmap='gray', vmin=0, vmax=255)
     plt.show()
 
+
 def arg_bool(arg:str):
     arg = arg.lower()
     if arg in ['true', 't', '1', 'y']:
         return True
     else:
         return False
+
+
+def clean_mpc_bias(path, save:bool=False):
+    df = pd.read_csv(f'{path}/episode_info.csv')
+    df[:24]['steer'] = [0. for i in range(24)]
+    if save:
+        df.to_csv(f'{path}/episode_info.csv', index=False)
+    else:
+        return df
+
+def add_dones_and_terminal_state(df:pd.DataFrame, path:str=None):
+    if 'dones' in df.columns:
+        return None
+    if df.loc[len(df) - 1, 'collisions'] != 0:
+        df.loc[len(df) - 2, 'reward'] = df.loc[len(df) - 1, 'reward']
+
+    df.loc[len(df) - 1, 'reward'] = .0
+    df.loc[len(df) - 1, 'steer'] = .0
+    df.loc[len(df) - 1, 'gas_brake'] = .0
+    df.loc[len(df) - 1, 'q'] = .0
+    dones = [0 for i in range(len(df)-1)] + [1]
+    df['done'] = dones
+    if path:
+        df.to_csv(f'{path}/episode_info.csv', index=False)
+    else:
+        return df
+

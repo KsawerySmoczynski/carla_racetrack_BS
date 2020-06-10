@@ -50,20 +50,12 @@ class DDPG(torch.nn.Module):
         self.linear2 = nn.Linear(self.linear_conv.out_features + self.linear.out_features,
                                  int(linear_hidden / 2))
 
-        # if list(rgb_shape):
-        #     fc2_input += self.conv_rgb2.out_channels
-        #     self.linear2 = nn.Linear(fc2_input, 256)
-        # else:
-
         self.apply(weights_init)
         relu_gain = nn.init.calculate_gain('relu')
         self.conv.weight.data.mul_(relu_gain)
         self.conv2.weight.data.mul_(relu_gain)
         self.conv3.weight.data.mul_(relu_gain)
         self.conv4.weight.data.mul_(relu_gain)
-        # if list(rgb_shape):
-        #     self.conv_rgb.weight.data.mul_(relu_gain)
-        #     self.conv_rgb2.weight.data.mul_(relu_gain)
 
         self.linear.weight.data = norm_col_init(self.linear.weight.data, 1.0)
         self.linear.bias.data.fill_(0)
@@ -89,9 +81,9 @@ class DDPG(torch.nn.Module):
         x = F.relu(self.maxp4(self.conv4(x)))
 
         x = x.view(x.size(0), -1)
-        x = self.linear_conv(x)
+        x = F.relu(self.linear_conv(x))
         x = torch.cat((x_numeric, x), dim=1)
-        x = self.linear2(x)
+        x = F.relu(self.linear2(x))
 
         return x
 
@@ -121,7 +113,7 @@ class DDPGActor(DDPG):
             self.cuda()
 
     def forward(self, x_numeric: torch.Tensor, img: torch.Tensor, **kwargs) -> object:
-        x_numeric = self.linear(x_numeric)
+        x_numeric = F.hardtanh(self.linear(x_numeric))
 
         x = F.relu(self.maxp1(self.conv(img)))
         x = F.relu(self.maxp2(self.conv2(x)))
@@ -129,11 +121,11 @@ class DDPGActor(DDPG):
         x = F.relu(self.maxp4(self.conv4(x)))
 
         x = x.view(x.size(0), -1)
-        x = self.linear_conv(x)
+        x = F.hardtanh(self.linear_conv(x))
         x = torch.cat((x_numeric, x), dim=1)
-        x = self.linear2(x)
-        x = self.linear3(x)
-        x = self.actor_linear(x)
+        x = F.hardtanh(self.linear2(x))
+        x = F.hardtanh(self.linear3(x))
+        x = F.hardtanh(self.actor_linear(x))
         # x = torch.round(x * 1e3) / 1e3 #rounding to 3 decimal places
         return x
 
@@ -161,7 +153,7 @@ class DDPGCritic(DDPG):
     def forward(self, action: torch.Tensor, x_numeric: torch.Tensor,
                 img: torch.Tensor, **kwargs) -> object:
 
-        x_numeric = self.linear(x_numeric)
+        x_numeric = F.hardtanh(self.linear(x_numeric))
 
         x = F.relu(self.maxp1(self.conv(img)))
         x = F.relu(self.maxp2(self.conv2(x)))
@@ -169,14 +161,14 @@ class DDPGCritic(DDPG):
         x = F.relu(self.maxp4(self.conv4(x)))
 
         x = x.view(x.size(0), -1)
-        x = self.linear_conv(x)
+        x = F.hardtanh(self.linear_conv(x))
         x = torch.cat((x_numeric, x), dim=1)
-        x = self.linear2(x)
+        x = F.hardtanh(self.linear2(x))
 
         action = action.view(action.size(0), -1)
-        action = self.linear_actor(action)
+        action = F.hardtanh(self.linear_actor(action))
         x = torch.cat((action, x), dim=1)
-        x = self.linear3(x)
+        x = F.hardtanh(self.linear3(x))
         x = self.critic_linear(x)
 
         return x

@@ -1,5 +1,4 @@
 import copy
-
 import numpy as np
 import torch
 from torch import nn
@@ -13,19 +12,22 @@ from net.utils import img_to_pil
 
 
 class NNController(Controller):
-    def __init__(self, actor_net:DDPGActor, critic_net:DDPGCritic, features:list=NUMERIC_FEATURES,
+    def __init__(self, actor_net:DDPGActor, critic_net:DDPGCritic, optimizer:torch.optim, features:list=NUMERIC_FEATURES,
                  no_data_points:int=4, train:bool=False, device:str='cuda:0'):
         super(NNController, self).__init__()
         assert(no_data_points<=4), 'Max data points = 4'
         self.actor_net = actor_net
         self.critic_net = critic_net
-        self.device = torch.device(device)
+        self.device = torch.device(device) if isinstance(device, str) else device
         self.features = features
         self.transform = transforms.ToTensor()
         self.no_data_points = no_data_points
         if train:
             self.actor_tgt_net = copy.deepcopy(self.actor_net)
             self.critic_tgt_net = copy.deepcopy(self.critic_net)
+            self.actor_net_optimizer = optimizer
+            self.critic_net_optimizer = copy.deepcopy(optimizer)
+
 
     def dict(self):
         controller = {'actor_net': self.actor_net.name,
@@ -85,6 +87,43 @@ class NNController(Controller):
             tgt_state[k] = tgt_state[k] * alpha + (1 - alpha) * v
         self.critic_tgt_net.load_state_dict(tgt_state)
 
+
+
+##########
+    # def train_on_batch(self, batch, gamma):
+    #     self.critic_net_optimizer.zero_grad()
+    #
+    #     #to jest batch 32 stanów
+    #     q_v = self.critic_net(**batch['state'])
+    #     #to jest batch 32 stanów następujących
+    #     last_act_v = self.actor_tgt_net(**batch['next_state'])
+    #
+    #     #przypisujemy wybrane przez aktora akcje
+    #     batch['next_state']['action'] = last_act_v
+    #
+    #     # dones_mask = [True for sample in batch['next_state'] if (sample['done']==1) ]
+    #     q_last_v = self.critic_tgt_net(**batch['next_state'])
+    #     q_last_v[dones_mask] = 0.0
+    #     q_ref_v = rewards_v.unsqueeze(dim=-1) + q_last_v * gamma
+    #     critic_loss_v = F.mse_loss(q_v, q_ref_v.detach())
+    #     critic_loss_v.backward()
+    #     crt_opt.step()
+    #     tb_tracker.track("loss_critic", critic_loss_v, frame_idx)
+    #     tb_tracker.track("critic_ref", q_ref_v.mean(), frame_idx)
+    #
+    #     # train actor
+    #     act_opt.zero_grad()
+    #     cur_actions_v = act_net(states_v)
+    #     actor_loss_v = -crt_net(states_v, cur_actions_v)
+    #     actor_loss_v = actor_loss_v.mean()
+    #     actor_loss_v.backward()
+    #     act_opt.step()
+    #     tb_tracker.track("loss_actor", actor_loss_v, frame_idx)
+    #
+    #     tgt_act_net.alpha_sync(alpha=1 - 1e-3)
+    #     tgt_crt_net.alpha_sync(alpha=1 - 1e-3)
+    #
+    #     return actor_loss_v, critic_loss_v, q_ref_v.mean()
 
 # Torch multiprocessing
 # https://pytorch.org/docs/stable/notes/multiprocessing.html

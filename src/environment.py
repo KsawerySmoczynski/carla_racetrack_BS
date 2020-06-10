@@ -85,6 +85,14 @@ class Agent:
         # velocity has the same vector structure as location
         return location_to_numpy(self.actor.get_velocity())
 
+    @property
+    def distance_2finish(self) -> float:
+        return calc_distance(actor_location=self.location, points_3D=self.waypoints)
+
+    @property
+    def collision(self) -> float:
+        return sum(self.sensors['collisions']['data']) if sum(self.sensors['collisions']['data']) > 2_000 else 0
+
 
     def play_step(self, state:dict, batch:bool=False) -> dict:
         '''
@@ -316,7 +324,7 @@ class Agent:
 
         keys = state_keys + list(action.keys())
         header = ','.join([f'{k}' for k in keys])
-        header = f'{header},reward\n'
+        header = f'{header},reward,done\n'
 
         with open(f'{self.save_path}/episode_info.csv', 'w+') as file:
             file.write(header)
