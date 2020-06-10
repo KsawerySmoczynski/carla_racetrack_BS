@@ -8,7 +8,7 @@ import visdom
 from matplotlib import pyplot as plt
 from tensorboardX import SummaryWriter
 
-from config import IMAGE_DOWNSIZE_FACTOR, DATE_TIME, IMAGE_SIZE
+from config import IMAGE_DOWNSIZE_FACTOR, DATE_TIME, IMAGE_SIZE, EXTRA_REWARD, GAMMA
 from spawn import location_to_numpy, calc_azimuth
 
 to_rgb_pil = lambda img: Image.frombuffer(mode='RGBA', size=IMAGE_SIZE, data=img.raw_data.tobytes()).convert('RGB')
@@ -230,18 +230,21 @@ def clean_mpc_bias(path, save:bool=False):
     else:
         return df
 
+
 def add_dones_and_terminal_state(df:pd.DataFrame, path:str=None):
     if 'dones' in df.columns:
         return None
     if df.loc[len(df) - 1, 'collisions'] != 0:
         df.loc[len(df) - 2, 'reward'] = df.loc[len(df) - 1, 'reward']
-
+    if df.loc[len(df) - 1, 'distance_2finish'] <= 50:
+        df.loc[len(df) - 2, 'reward'] = EXTRA_REWARD*GAMMA**df.loc[len(df) - 2, 'step']
     df.loc[len(df) - 1, 'reward'] = .0
     df.loc[len(df) - 1, 'steer'] = .0
     df.loc[len(df) - 1, 'gas_brake'] = .0
     df.loc[len(df) - 1, 'q'] = .0
     dones = [0 for i in range(len(df)-1)] + [1]
     df['done'] = dones
+    df['q'] = [sum(df['reward'][i:]) for i in range(df.shape[0])]
     if path:
         df.to_csv(f'{path}/episode_info.csv', index=False)
     else:

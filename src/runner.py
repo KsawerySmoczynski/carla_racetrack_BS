@@ -18,7 +18,7 @@ from control.abstract_control import Controller
 
 #Configs
 from config import DATA_PATH, FRAMERATE, GAMMA, SENSORS, VEHICLES, \
-    CARLA_IP, MAP, NO_AGENTS, NEGATIVE_REWARD, DATA_POINTS, NUMERIC_FEATURES, FEATURES_FOR_BATCH, BATCH_SIZE
+    CARLA_IP, MAP, NO_AGENTS, EXTRA_REWARD, DATA_POINTS, NUMERIC_FEATURES, FEATURES_FOR_BATCH, BATCH_SIZE
 
 from utils import save_info, update_Qvals, arg_bool, save_terminal_state
 
@@ -270,14 +270,14 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
         rewards = []
         for agent, state, next_state in zip(environment.agents, states, next_states):
             reward = environment.calc_reward(points_3D=agent.waypoints, state=state, next_state=next_state,
-                                    gamma=GAMMA, step=step, punishment=NEGATIVE_REWARD/agent.initial_distance)
+                                             gamma=GAMMA, step=step, punishment=EXTRA_REWARD / agent.initial_distance)
             rewards.append(reward)
 
         for idx, (state, action, reward, agent) in enumerate(zip(states, actions, rewards, environment.agents)):
             if agent.distance_2finish < 50:
                 print(f'agent {str(agent)} finished the race in {step} steps car {args.vehicle}')
                 #positive reward for win -> calculate it stupid
-                step_info = save_info(path=agent.save_path, state=state, action=action, reward=reward)
+                step_info = save_info(path=agent.save_path, state=state, action=action, reward=EXTRA_REWARD*GAMMA**step)
                 # buffer.add_step(path=agent.save_path, step=step_info)
                 status[str(agent)] = 'Finished'
                 terminal_state = agent.get_state(step=step+1, retrieve_data=True)
@@ -289,7 +289,7 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
             elif agent.collision > 0:
                 print(f'failed, collision {str(agent)} at step {step}, car {args.vehicle}')
                 step_info = save_info(path=agent.save_path, state=state, action=action,
-                          reward=reward - NEGATIVE_REWARD * (GAMMA ** step))
+                                      reward=reward - EXTRA_REWARD * (GAMMA ** step))
                 # buffer.add_step(path=agent.save_path, step=step_info)
                 status[str(agent)] = 'Collision'
                 terminal_state = agent.get_state(step=step+1, retrieve_data=True)
@@ -306,9 +306,9 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                     # df.to_csv(f'{agent.save_path}/episode_info.csv', index=False)
                     # state['step'] = step-70
                     # step_info = save_info(path=agent.save_path, state=state, action=action,
-                    #           reward=reward - NEGATIVE_REWARD * (GAMMA ** step))
+                    #           reward=reward - EXTRA_REWARD * (GAMMA ** step))
                     step_info = save_info(path=agent.save_path, state=state, action=action,
-                              reward=reward - NEGATIVE_REWARD * (GAMMA ** step))
+                                          reward=reward - EXTRA_REWARD * (GAMMA ** step))
                     # buffer.add_step(path=agent.save_path, step=step_info)
                     status[str(agent)] = 'Stuck'
                     terminal_state = agent.get_state(step=step+1, retrieve_data=True)
@@ -348,7 +348,6 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
             df.loc[:idx, 'state_steer'] = 0.
         if info == 'Max steps exceeded':
             idx = len(df)-1
-            df.loc[idx-1,'reward'] = -NEGATIVE_REWARD * (GAMMA ** NUM_STEPS) #TODO -> discuss if necessary
             df.loc[idx,'steer'] = 0.
             df.loc[idx,'gas_brake'] = 0.
             df.loc[idx,'reward'] = 0. #TODO -> discuss if necessary
