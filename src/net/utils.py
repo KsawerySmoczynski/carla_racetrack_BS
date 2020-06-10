@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 from PIL import Image, ImageFilter
 from torch.utils.data import Dataset, DataLoader, IterableDataset
+from torch.utils.data.dataloader import default_collate
 from torchvision import transforms
 
 from config import SENSORS, FEATURES_FOR_BATCH, DEVICE, NUMERIC_FEATURES
@@ -98,7 +99,7 @@ def get_n_params(model):
     return pp
 
 
-def unpack_supervised_batch(batch, device=DEVICE):
+def unpack_batch(batch, device=DEVICE):
     '''
 
     :param batch:
@@ -108,17 +109,6 @@ def unpack_supervised_batch(batch, device=DEVICE):
     for k, v in batch.items():
         batch[k] = v.float().to(device)
     return batch
-
-
-class OldToSupervised(object):
-    def __call__(self, sample):
-        inputs = [np.array([sample['data'][data] for data in ['distance_2finish', 'velocity', 'collisions']]), sample['data']['img']]  # + [[np.Nan]]  # - how to add None
-        inputs = tuple(inputs)
-        # inputs = np.array([sample['data'][key] for key in list(sample['data'].keys()) if key not in ['q', 'reward', 'step']])
-        actions = np.array([sample['data']['steer'], sample['data']['gas_brake']])
-        q = sample['data']['q']
-
-        return {'inputs': inputs, 'actions': actions, 'q': q}
 
 
 class ToSupervised(object):
@@ -134,8 +124,20 @@ class ToSupervised(object):
 
 
 class ToReinforcement(object):
+    def __init__(self, features:list=NUMERIC_FEATURES):
+        self.features = features
+
     def __call__(self, sample):
-        pass
+
+        x_numeric = np.array([sample['data'][data] for data in self.features])
+        img = sample['data']['img']
+        action = np.array([sample['data']['steer'], sample['data']['gas_brake']])
+        reward = sample['data']['reward']
+        q = sample['data']['q']
+        done = sample['data']['done']
+
+        return {'x_numeric': x_numeric, 'img': img, 'action': action,
+                'reward':reward, 'q': q, 'done': done}
 
 
 class DepthSegmentationPreprocess(object):
@@ -147,8 +149,10 @@ class DepthSegmentationPreprocess(object):
         self.depth_channels = depth_channels
 
     def __call__(self, sample):
-        step = max(to_list(sample['data']['depth_indexes']))
-        del sample['data']['depth_indexes']
+        step = sample['item'][1]
+        for key in sample['data'].keys():
+            if 'indexes' in key:
+                del sample['data'][key]
         indexes = [idx for idx in range(step-self.no_data_points, step)]
         depth = load_frames(path=sample['item'][0], sensor='depth',
                                               indexes=indexes)
@@ -184,16 +188,16 @@ class DepthPreprocess(object):
         # convert = lambda x: x.convert('L')
         step = max(to_list(sample['data']['depth_indexes']))
         indexes = [idx for idx in range(step - self.no_data_points, step)]
-        imgs = load_frames(path=sample['item'][0], sensor='img', convert=self.convert,
+        imgs = load_frames(path=sample['item'][0], sensor='depth', convert=self.convert,
                                               indexes=indexes)
         del sample['data']['depth_indexes']
-        # sample['data']['img'] = np.concatenate([img.reshape(1, img.shape[0], img.shape[1])
+        # sample['data']['depth'] = np.concatenate([img.reshape(1, img.shape[0], img.shape[1])
         #                                           for img in sample['data']['img']], axis=2) / 255.
         imgs = np.concatenate([img.reshape(self.depth_channels, img.shape[0], img.shape[1])
                                                   for img in imgs], axis=2)
 
         imgs = imgs - imgs.min()
-        sample['data']['img'] = imgs / imgs.max()
+        sample['data']['depth'] = imgs / imgs.max()
 
         return sample
 
@@ -226,8 +230,8 @@ class SimpleDataset(Dataset):
         return len(self.ids)
 
     def __getitem__(self, item_idx):
-
-        data = self.dfs[self.ids[item_idx][0]].loc[self.ids[item_idx][1], self.features].to_dict()
+        path, step = self.ids[item_idx]
+        data = self.dfs[path].loc[step, self.features].to_dict()
         sample = {'item': self.ids[item_idx], 'data': data}
 
         return self.transform(sample)
@@ -359,27 +363,35 @@ class ReplayBuffer:
         self.dfs = {}
         self.features = features + list(filter(lambda x: len(x) > 1,
                                                ['depth_indexes' * depth, 'rgb_indexes' * rgb,
-                                                'segmentation_indexes' * segmentation]))
+                                                'segmentation_indexes' * segmentation, 'done']))
         self.transform = transform if transform else lambda x: x
         self.pos = 0
+        self.batch_size = batch_size
 
 
     def __len__(self):
         return len(self.buffer)
 
-    def __iter__(self):
-        #TODO
-        #generator yielding transformed samples with size of batches
-        return iter(self.buffer)
+    # def __iter__(self):
+    #     while True:
+    #         yield self.sample()
 
     def __getitem__(self, idx):
         try:
-            #Return example with idx based on dataframe, transformed -> state
-            #Return example with based on dataframe idx +1 , transformed -> state + 1
-            pass
+            path, step  = self.buffer[idx]
+            state = {'item': (path, step),
+                    'data': self.dfs[path].loc[step, self.features]}
+            next_state = {'item': (path, step),
+                          'data': self.dfs[path].loc[step, self.features]}
+            state = self.transform(state)
+            next_state = self.transform(next_state)
+            sample = {'state':state,
+                      'next_state':next_state}
+
+            return sample
         except:
-            #idx-1 from buffer
-            pass
+            return self[idx-1]
+
     @property
     def df_paths(self):
             return list(set([sample[0] for sample in self.buffer]))
@@ -407,7 +419,6 @@ class ReplayBuffer:
             if path not in prievous:
                 self.dfs[path] = pd.read_csv(f'{path}/episode_info.csv')
 
-
     def _add(self, sample):
         if len(self.buffer) < self.capacity:
             self.buffer.append(sample)
@@ -423,83 +434,11 @@ class ReplayBuffer:
                 self.buffer[self.pos] = sample
             self.pos = (self.pos + 1) % self.capacity
 
-        # assert self.capacity >= len(samples), 'Can\'t add more than max capacity of buffer'
-        #
-        # if len(samples) <= self.capacity - len(self.buffer):
-        #     self.buffer += samples
-        #     self.pos = (self.pos + len(samples)) % self.capacity
-        # else:
-        #     TODO BAAAAAAD
-            # cut_idx = self.capacity - self.pos + 1
-            # self.buffer[self.pos:] = samples[:cut_idx]
-            # self.buffer[:len(samples)-cut_idx] = samples[:len(samples) - cut_idx]
-            # print(len(samples), cut_idx)
-            # self.pos = len(samples)-cut_idx
+    def sample(self):
+        if len(self.buffer) <= self.batch_size:
+            return default_collate([self[key] for key in range(len(self.buffer))])
+        keys = np.random.choice(range(len(self.buffer)), self.batch_size, replace=False)
 
-    def sample(self, batch_size):
-        if len(self.buffer) <= batch_size:
-            return self.buffer
-        keys = np.random.choice(len(self.buffer), batch_size, replace=True)
-        return [self.buffer[key] for key in keys]
-
-
-class PrioritizedReplayBuffer(ReplayBuffer):
-    '''
-    Class inspired with ptan
-    https://github.com/Shmuma/ptan/blob/049ff123f5967eaeeaa268684e13e5aec5029d9f/ptan/experience.py
-    '''
-    def __init__(self, experience_source, buffer_size, alpha):
-        super(PrioritizedReplayBuffer, self).__init__(experience_source, buffer_size)
-        assert alpha > 0
-        self._alpha = alpha
-
-        it_capacity = 1
-        while it_capacity < buffer_size:
-            it_capacity *= 2
-
-        self._it_sum = utils.SumSegmentTree(it_capacity)
-        self._it_min = utils.MinSegmentTree(it_capacity)
-        self._max_priority = 1.0
-
-    def _add(self, *args, **kwargs):
-        idx = self.pos
-        super()._add(*args, **kwargs)
-        self._it_sum[idx] = self._max_priority ** self._alpha
-        self._it_min[idx] = self._max_priority ** self._alpha
-
-    def _sample_proportional(self, batch_size):
-        res = []
-        for _ in range(batch_size):
-            mass = random.random() * self._it_sum.sum(0, len(self) - 1)
-            idx = self._it_sum.find_prefixsum_idx(mass)
-            res.append(idx)
-        return res
-
-    def sample(self, batch_size, beta):
-        assert beta > 0
-
-        idxes = self._sample_proportional(batch_size)
-
-        weights = []
-        p_min = self._it_min.min() / self._it_sum.sum()
-        max_weight = (p_min * len(self)) ** (-beta)
-
-        for idx in idxes:
-            p_sample = self._it_sum[idx] / self._it_sum.sum()
-            weight = (p_sample * len(self)) ** (-beta)
-            weights.append(weight / max_weight)
-        weights = np.array(weights, dtype=np.float32)
-        samples = [self.buffer[idx] for idx in idxes]
-        return samples, idxes, weights
-
-    def update_priorities(self, idxes, priorities):
-        assert len(idxes) == len(priorities)
-        for idx, priority in zip(idxes, priorities):
-            assert priority > 0
-            assert 0 <= idx < len(self)
-            self._it_sum[idx] = priority ** self._alpha
-            self._it_min[idx] = priority ** self._alpha
-
-            self._max_priority = max(self._max_priority, priority)
+        return default_collate([self[key] for key in keys])
 
 

@@ -20,7 +20,7 @@ from torchvision import transforms
 from torch import multiprocessing as mp, nn
 from tensorboardX import SummaryWriter
 
-from net.utils import get_paths, DepthPreprocess, ToSupervised, SimpleDataset, unpack_supervised_batch, get_n_params, \
+from net.utils import get_paths, DepthPreprocess, ToSupervised, SimpleDataset, unpack_batch, get_n_params, \
     DepthSegmentationPreprocess
 
 #TODO check how pytorch dataloader works and inherit it to build adhoc loading from disk
@@ -98,7 +98,7 @@ def main(args):
         avg_avg_grad = 0.
         for idx, batch in enumerate(iter(dataset_train)):
             global_step = int((len(dataset_train.dataset) / batch_size * epoch_idx) + idx)
-            batch = unpack_supervised_batch(batch=batch, device=device)
+            batch = unpack_batch(batch=batch, device=device)
             loss, grad = train(input=batch, label=batch['action'], net=net, optimizer=optimizer, loss_fn=loss_function)
             # loss, grad = train(input=batch, label=batch['q'], net=net, optimizer=optimizer, loss_fn=loss_function)
 
@@ -135,7 +135,7 @@ def main(args):
         test_loss = .0
         with torch.no_grad():
             for idx, batch in enumerate(iter(dataset_test)):
-                batch = unpack_supervised_batch(batch=batch, device=device)
+                batch = unpack_batch(batch=batch, device=device)
                 pred = net(**batch)
                 loss = test_loss_function(pred, batch['action'])
                 # loss = test_loss_function(pred.view(-1), batch['q'])
@@ -157,7 +157,7 @@ def main(args):
     json.dump(vars(args), fp=open(f'{net_path}/args.json', 'w'), sort_keys=True, indent=4)
 
     batch = next(iter(dataset_test))
-    batch = unpack_supervised_batch(batch=batch, device=device)
+    batch = unpack_batch(batch=batch, device=device)
     y = net(**batch)
     g = make_dot(y, params=dict(net.named_parameters()))
     g.save(filename=f'{DATE_TIME}_{net.name}.dot', directory=net_path)

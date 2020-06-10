@@ -7,10 +7,13 @@ import carla
 
 #Local imports
 import torch
+from tensorboardX import SummaryWriter
+from torchvision.transforms import transforms
+
 from control.nn_control import NNController
 from environment import Environment
 from net.ddpg_net import DDPGActor, DDPGCritic
-from net.utils import ReplayBuffer
+from net.utils import ReplayBuffer, get_paths, DepthPreprocess, DepthSegmentationPreprocess, ToReinforcement
 from spawn import df_to_spawn_points, numpy_to_transform, configure_simulation
 from control.mpc_control import MPCController
 from control.abstract_control import Controller
@@ -25,7 +28,8 @@ from utils import save_info, update_Qvals, arg_bool, save_terminal_state
 
 #Use this script only for data generation
 # for map in 'circut_spa' 'RaceTrack' 'RaceTrack2'; do for car in 0 1 2; do for speed in 150 100 80; do python runner_multiagent.py --map=$map --vehicle=$car --speed=$speed ; done; done; done;
-def main():
+
+def parse_args():
     argparser = argparse.ArgumentParser()
     # Simulator configs
     argparser.add_argument(
@@ -141,9 +145,7 @@ def main():
     if len(args) > 1:
         args = args[0]
 
-    # return args
-    run_client(args)
-
+    return args
 
 def run_client(args):
 
@@ -152,7 +154,7 @@ def run_client(args):
     args.invert = arg_bool(args.invert)
 
     client = configure_simulation(args)
-
+    writer = None
     # Controller initialization - we initialize one controller for n-agents, what happens in multiprocessing.
     if args.controller == 'MPC':
         TARGET_SPEED = args.speed
@@ -171,7 +173,7 @@ def run_client(args):
         critic_net.load_state_dict(torch.load(critic_path))
 
         controller = NNController(actor_net=actor_net, critic_net=critic_net, no_data_points=1,
-                                  features=NUMERIC_FEATURES, train=False, optimizer=None, device='cuda:0')
+                                  features=NUMERIC_FEATURES, train=True, optimizer='adam', device='cuda:0')
     else:
         print(args.controller)
         controller = None
@@ -181,35 +183,35 @@ def run_client(args):
     #TODO
     # Initialize replay buffer
     # Remember currently loaded dfs
-    transform = None #TODO define
-    buffer = None
-    # buffer = ReplayBuffer(capacity=100_000, features=FEATURES_FOR_BATCH, transform=transform,
-    #                       batch_size=BATCH_SIZE, **SENSORS)
-    # tag=None
-    # samples = get_paths(as_tuples=True, shuffle=True, sensors=SENSORS, tag=None)
-    # buffer._add_bulk(samples=samples)
-    # prievous = []
+    transform = transforms.Compose([DepthSegmentationPreprocess(no_data_points=1), ToReinforcement()]) #TODO define
+    buffer = ReplayBuffer(capacity=100_000, features=FEATURES_FOR_BATCH, transform=transform,
+                          batch_size=BATCH_SIZE, **SENSORS)
+    tag = None
+    samples = get_paths(as_tuples=True, shuffle=True, sensors=SENSORS, tag=None)
+    buffer._add_bulk(samples=samples)
+    prievous = []
+
     for i in range(args.episodes):
         #TODO
         # Compare remembered dfs with those in buffer -> set from buffer
         #       * existing ones remain
         #       * if df is in remembered but not in the buffer eliminate it from dfs
         #       * if df is not remembered but in the buffer delete it from the dfs and reload it from disk
-        # buffer._load_dfs(prievous=prievous)
-        # prievous = buffer.df_paths
-        # print(buffer.pos)
+        buffer._load_dfs(prievous=prievous)
+        prievous = buffer.df_paths
+        print(buffer.pos)
         buffer, status, save_paths = run_episode(client=client,
                                         controller=controller,
                                         buffer=buffer,
+                                        writer=writer,
                                         args=args)
 
         for (actor, status), path in zip(status.items(), save_paths):
             print(f'Episode {i + 1} actor {actor} ended with status: {status}')
             print(f'Data saved in: {path}')
 
-
-
-def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer, args) -> (ReplayBuffer, dict, dict):
+# noinspection PyArgumentList
+def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer, writer:SummaryWriter, args) -> (ReplayBuffer, dict, dict):
     '''
     Runs single episode. Configures world and agent, spawns it on map and controlls it from start point to termination
     state.
@@ -258,6 +260,9 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
     status = dict({str(agent): 'Max steps exceeded' for agent in environment.agents})
     slow_frames = [0 for i in range(len(environment.agents))]
 
+    episode_actor_loss_v = 0
+    episode_critic_loss_v = 0
+
     for step in range(NUM_STEPS):
 
         states = [agent.get_state(step, retrieve_data=True) for agent in environment.agents]
@@ -278,7 +283,7 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                 print(f'agent {str(agent)} finished the race in {step} steps car {args.vehicle}')
                 #positive reward for win -> calculate it stupid
                 step_info = save_info(path=agent.save_path, state=state, action=action, reward=reward)
-                # buffer.add_step(path=agent.save_path, step=step_info)
+                buffer.add_step(path=agent.save_path, step=step_info)
                 status[str(agent)] = 'Finished'
                 terminal_state = agent.get_state(step=step+1, retrieve_data=True)
                 save_terminal_state(path=agent.save_path, state=terminal_state, action=action)
@@ -290,7 +295,7 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                 print(f'failed, collision {str(agent)} at step {step}, car {args.vehicle}')
                 step_info = save_info(path=agent.save_path, state=state, action=action,
                                       reward=reward - EXTRA_REWARD * (GAMMA ** step))
-                # buffer.add_step(path=agent.save_path, step=step_info)
+                buffer.add_step(path=agent.save_path, step=step_info)
                 status[str(agent)] = 'Collision'
                 terminal_state = agent.get_state(step=step+1, retrieve_data=True)
                 save_terminal_state(path=agent.save_path, state=terminal_state, action=action)
@@ -301,15 +306,9 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
             if state['velocity'] < 10:
                 if slow_frames[idx] > 100:
                     print(f'agent {str(agent)} stuck, finish on step {step}, car {args.vehicle}')
-                    # df = pd.read_csv(f'{agent.save_path}/episode_info.csv').iloc[:-70,:]
-                    # Find max diff between consecutive speeds and cut there it will be your idx
-                    # df.to_csv(f'{agent.save_path}/episode_info.csv', index=False)
-                    # state['step'] = step-70
-                    # step_info = save_info(path=agent.save_path, state=state, action=action,
-                    #           reward=reward - EXTRA_REWARD * (GAMMA ** step))
                     step_info = save_info(path=agent.save_path, state=state, action=action,
                                           reward=reward - EXTRA_REWARD * (GAMMA ** step))
-                    # buffer.add_step(path=agent.save_path, step=step_info)
+                    buffer.add_step(path=agent.save_path, step=step_info)
                     status[str(agent)] = 'Stuck'
                     terminal_state = agent.get_state(step=step+1, retrieve_data=True)
                     terminal_state['collisions'] = 2500
@@ -320,17 +319,18 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                 slow_frames[idx] += 1
 
             step_info = save_info(path=agent.save_path, state=state, action=action, reward=reward)
-                # step_info = save_info(path=agent.save_path, state=state, action=action, reward=reward)
-                # buffer.add_step(path=agent.save_path, step=step_info)
+            buffer.add_step(path=agent.save_path, step=step_info)
 
         #TODO
         # * sample batch * no_agents
         # *
-        # if args.controller == 'NN':
-        #     batch = buffer.sample(batch_size=32)
-        #     actor_loss_v, critic_loss_v, q_ref_v = controller.train_on_batch(batch=batch, gamma=GAMMA)
-            #All lossess add to local tracker
-            #Add losses for averaging to global tracker
+        if args.controller == 'NN':
+            batch = buffer.sample()
+            actor_loss_v, critic_loss_v, q_ref_v = controller.train_on_batch(batch=batch, gamma=GAMMA)
+            episode_actor_loss_v += actor_loss_v
+            episode_critic_loss_v += critic_loss_v
+            print(f'Avg actor loss {episode_actor_loss_v/step}')
+            print(f'Avg critic loss {episode_critic_loss_v/step}')
 
         if len(environment.agents) < 1:
             print('fini')
@@ -365,6 +365,7 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
 
 if __name__ == '__main__':
     try:
-        main()
+        args = parse_args()
+        run_client(args)
     except KeyboardInterrupt:
         print('\nCancelled by user. Bye!')
