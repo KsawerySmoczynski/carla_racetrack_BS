@@ -15,7 +15,7 @@ from net.utils import img_to_pil, unpack_batch
 
 class NNController(Controller):
     def __init__(self, actor_net:DDPGActor, critic_net:DDPGCritic, optimizer:torch.optim, features:list=NUMERIC_FEATURES,
-                 no_data_points:int=4, train:bool=False, device:str='cuda:0'):
+                 no_data_points:int=4, train:bool=False, device:str='cuda:0', epsilon=0.3):
         super(NNController, self).__init__()
         assert(no_data_points<=4), 'Max data points = 4'
         self.actor_net = actor_net
@@ -24,12 +24,17 @@ class NNController(Controller):
         self.features = features
         self.transform = transforms.ToTensor()
         self.no_data_points = no_data_points
+        self.epsilon = epsilon
+
         if train:
             self.actor_tgt_net = copy.deepcopy(self.actor_net)
             self.critic_tgt_net = copy.deepcopy(self.critic_net)
             self.actor_net_optimizer = Adam(params=self.actor_net.parameters(), lr=1e-3)
             self.critic_net_optimizer = Adam(params=self.critic_net.parameters(), lr=1e-3)
 
+    def __str__(self):
+
+        return f'{self.__class__.__name__}_dpoints{self.no_data_points}'
 
     def dict(self):
         controller = {'actor_net': self.actor_net.name,
@@ -57,14 +62,13 @@ class NNController(Controller):
     def control(self, state, **kwargs):
         input = self.preprocess(state)
         action = self.actor_net(**input).unsqueeze(0)
-        q_pred = self.critic_net(**{'action':action, **input}).view(-1)
-        q_pred = q_pred.cpu().detach().numpy()
         action = action.cpu().detach().view(-1).numpy()
+        action += self.epsilon * np.random.normal(size=action.shape)
+        action = np.clip(action, -1, 1)
 
         action = {
             'steer': round(float(action[0]), 3),
-            'gas_brake': round(float(action[1]), 3),
-            'q_pred': float(q_pred)
+            'gas_brake': round(float(action[1]), 3)
         }
 
         return action
@@ -117,7 +121,7 @@ class NNController(Controller):
 
         self.alpha_sync(1 - 1e-3)
 
-        return actor_loss_v.detach().cpu(), critic_loss_v.detach().cpu(),\
+        return actor_loss_v.detach().cpu().abs(), critic_loss_v.detach().cpu().abs(),\
                q_ref_v.mean().detach().cpu()
 
 

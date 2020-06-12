@@ -397,7 +397,8 @@ class ReplayBuffer:
             return list(set([sample[0] for sample in self.buffer]))
 
     def add_step(self, path:str, step:pd.Series):
-        self._add((path, step['step']))
+
+        self._add((path, step['step'][0]))
         if path in self.dfs.keys():
             self.dfs[path].append(step)
         else:

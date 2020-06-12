@@ -5,6 +5,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from net.utils import norm_col_init, weights_init
 
+# PAPERS
+# https://openreview.net/pdf?id=SyZipzbCb
+# https://arxiv.org/pdf/1710.02298.pdf
+# file:///home/ksawi/Documents/Workspace/licencjat/text/ksi%C4%85%C5%BCk/Maxim%20Lapan%20-%20Deep%20Reinforcement%20Learning%20Hands-On_%20Apply%20modern%20RL%20methods,%20with%20deep%20Q-networks,%20value%20iteration,%20policy%20gradients,%20TRPO,%20AlphaGo%20Zero%20and%20more-Packt%20(2018).pdf
+
+
 
 # https://github.com/dgriff777/rl_a3c_pytorch/blob/master/model.py
 # torch.nn only supports mini-batches The entire torch.nn package only supports inputs that are a mini-batch of samples, and not a single sample.
@@ -33,6 +39,10 @@ class DDPG(torch.nn.Module):
 
         # Num inputs to szerokość
         super(DDPG, self).__init__()
+        self.img_shape = img_shape
+        self.numeric_shape = numeric_shape
+        self.linear_hidden = linear_hidden
+        self.conv_hidden = conv_hidden
         self.conv = nn.Conv2d(img_shape[0], conv_hidden, 7, stride=2, padding=3)
         self.conv2 = nn.Conv2d(conv_hidden, conv_hidden, 5, stride=1, padding=2)
         self.conv3 = nn.Conv2d(conv_hidden, int(conv_hidden * 2), 5, stride=1, padding=1)
@@ -69,6 +79,13 @@ class DDPG(torch.nn.Module):
     @property
     def name(self):
         return f'{self.__class__.__name__}_l{self.linear.out_features}_conv{self.conv.out_channels}'
+
+    def dict(self):
+        info = {'img_shape': self.img_shape,
+                'numeric_shape': self.numeric_shape,
+                'linear_hidden': self.linear_hidden,
+                'conv_hidden': self.conv_hidden}
+        return info
 
     def forward(self, x_numeric: torch.Tensor, depth: torch.Tensor,
                 rgb: torch.Tensor = None, **kwargs) -> object:
@@ -111,6 +128,7 @@ class DDPGActor(DDPG):
 
         if cuda:
             self.cuda()
+
 
     def forward(self, x_numeric: torch.Tensor, img: torch.Tensor, **kwargs) -> object:
         x_numeric = F.hardtanh(self.linear(x_numeric))

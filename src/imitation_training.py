@@ -66,7 +66,7 @@ def main(args):
     print(net)
     print(get_n_params(net))
     # save path
-    net_path = f'../data/models/{DATE_TIME}/{net.name}'
+    net_path = f'../data/models/imitation/{DATE_TIME}/{net.name}'
     os.makedirs(net_path, exist_ok=True)
     optim_steps = args.optim_steps
     logging_idx = int(len(dataset_train.dataset) / (batch_size * optim_steps))
