@@ -2,18 +2,20 @@ import copy
 import numpy as np
 import torch
 from torch import nn
+import torch.nn.functional as F
 from PIL import ImageFilter
+from torch.optim import Adam
 from torchvision.transforms import transforms
 
 from config import NUMERIC_FEATURES
 from control.abstract_control import Controller
 from net.ddpg_net import DDPGActor, DDPGCritic
-from net.utils import img_to_pil
+from net.utils import img_to_pil, unpack_batch
 
 
 class NNController(Controller):
     def __init__(self, actor_net:DDPGActor, critic_net:DDPGCritic, optimizer:torch.optim, features:list=NUMERIC_FEATURES,
-                 no_data_points:int=4, train:bool=False, device:str='cuda:0'):
+                 no_data_points:int=4, train:bool=False, device:str='cuda:0', epsilon=0.3):
         super(NNController, self).__init__()
         assert(no_data_points<=4), 'Max data points = 4'
         self.actor_net = actor_net
@@ -22,12 +24,17 @@ class NNController(Controller):
         self.features = features
         self.transform = transforms.ToTensor()
         self.no_data_points = no_data_points
+        self.epsilon = epsilon
+
         if train:
             self.actor_tgt_net = copy.deepcopy(self.actor_net)
             self.critic_tgt_net = copy.deepcopy(self.critic_net)
-            self.actor_net_optimizer = optimizer
-            self.critic_net_optimizer = copy.deepcopy(optimizer)
+            self.actor_net_optimizer = Adam(params=self.actor_net.parameters(), lr=1e-3)
+            self.critic_net_optimizer = Adam(params=self.critic_net.parameters(), lr=1e-3)
 
+    def __str__(self):
+
+        return f'{self.__class__.__name__}_dpoints{self.no_data_points}'
 
     def dict(self):
         controller = {'actor_net': self.actor_net.name,
@@ -55,14 +62,13 @@ class NNController(Controller):
     def control(self, state, **kwargs):
         input = self.preprocess(state)
         action = self.actor_net(**input).unsqueeze(0)
-        q_pred = self.critic_net(**{'action':action, **input}).view(-1)
-        q_pred = q_pred.cpu().detach().numpy()
         action = action.cpu().detach().view(-1).numpy()
+        action += self.epsilon * np.random.normal(size=action.shape)
+        action = np.clip(action, -1, 1)
 
         action = {
             'steer': round(float(action[0]), 3),
-            'gas_brake': round(float(action[1]), 3),
-            'q_pred': float(q_pred)
+            'gas_brake': round(float(action[1]), 3)
         }
 
         return action
@@ -87,43 +93,37 @@ class NNController(Controller):
             tgt_state[k] = tgt_state[k] * alpha + (1 - alpha) * v
         self.critic_tgt_net.load_state_dict(tgt_state)
 
+    def train_on_batch(self, batch, gamma):
+        state = unpack_batch(batch['state'], device=self.device)
+        next_state = unpack_batch(batch['next_state'], device=self.device)
+
+        self.critic_net_optimizer.zero_grad()
+        q_v = self.critic_net(**state)
+        last_act_v = self.actor_tgt_net(**next_state)
+
+        next_state['action'] = last_act_v
+
+        q_last_v = self.critic_tgt_net(**next_state)
+        dones_mask = next_state['done'] > 0
+        q_last_v[dones_mask] = 0.0
+        q_ref_v = state['reward'].unsqueeze(dim=-1) + q_last_v * gamma
+        critic_loss_v = F.mse_loss(q_v, q_ref_v.detach())
+        critic_loss_v.backward()
+        self.critic_net_optimizer.step()
 
 
-##########
-    # def train_on_batch(self, batch, gamma):
-    #     self.critic_net_optimizer.zero_grad()
-    #
-    #     #to jest batch 32 stanów
-    #     q_v = self.critic_net(**batch['state'])
-    #     #to jest batch 32 stanów następujących
-    #     last_act_v = self.actor_tgt_net(**batch['next_state'])
-    #
-    #     #przypisujemy wybrane przez aktora akcje
-    #     batch['next_state']['action'] = last_act_v
-    #
-    #     # dones_mask = [True for sample in batch['next_state'] if (sample['done']==1) ]
-    #     q_last_v = self.critic_tgt_net(**batch['next_state'])
-    #     q_last_v[dones_mask] = 0.0
-    #     q_ref_v = rewards_v.unsqueeze(dim=-1) + q_last_v * gamma
-    #     critic_loss_v = F.mse_loss(q_v, q_ref_v.detach())
-    #     critic_loss_v.backward()
-    #     crt_opt.step()
-    #     tb_tracker.track("loss_critic", critic_loss_v, frame_idx)
-    #     tb_tracker.track("critic_ref", q_ref_v.mean(), frame_idx)
-    #
-    #     # train actor
-    #     act_opt.zero_grad()
-    #     cur_actions_v = act_net(states_v)
-    #     actor_loss_v = -crt_net(states_v, cur_actions_v)
-    #     actor_loss_v = actor_loss_v.mean()
-    #     actor_loss_v.backward()
-    #     act_opt.step()
-    #     tb_tracker.track("loss_actor", actor_loss_v, frame_idx)
-    #
-    #     tgt_act_net.alpha_sync(alpha=1 - 1e-3)
-    #     tgt_crt_net.alpha_sync(alpha=1 - 1e-3)
-    #
-    #     return actor_loss_v, critic_loss_v, q_ref_v.mean()
+        self.actor_net_optimizer.zero_grad()
+        batch['state']['action'] = self.actor_net(**state)
+        actor_loss_v = -self.critic_net(**state)
+        actor_loss_v = actor_loss_v.mean()
+        actor_loss_v.backward()
+        self.actor_net_optimizer.step()
+
+        self.alpha_sync(1 - 1e-3)
+
+        return actor_loss_v.detach().cpu().abs(), critic_loss_v.detach().cpu().abs(),\
+               q_ref_v.mean().detach().cpu()
+
 
 # Torch multiprocessing
 # https://pytorch.org/docs/stable/notes/multiprocessing.html

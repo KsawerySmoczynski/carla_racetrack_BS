@@ -362,7 +362,7 @@ class Environment:
                 agent.destroy(data=True)
             self.agents = []
 
-        if self.client.get_world().get_map().name != args.map:
+        if self.client.get_world().get_map().name.strip() != args.map.strip():
             self.world: carla.World = self.client.load_world(args.map)
         else:
             self.world:carla.World = self.client.reload_world()
