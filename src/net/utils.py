@@ -150,10 +150,13 @@ class DepthSegmentationPreprocess(object):
 
     def __call__(self, sample):
         step = sample['item'][1]
+        keys_to_del = []
         for key in sample['data'].keys():
             if 'indexes' in key:
-                del sample['data'][key]
-        indexes = [idx for idx in range(step-self.no_data_points, step)]
+                keys_to_del.append(key)
+        for key in keys_to_del:
+            del sample['data'][key]
+        indexes = [idx for idx in range(step, step+self.no_data_points)]
         depth = load_frames(path=sample['item'][0], sensor='depth',
                                               indexes=indexes)
         segmentation = load_frames(path=sample['item'][0], sensor='segmentation',

@@ -112,6 +112,7 @@ class DDPG(torch.nn.Module):
         x = F.relu(self.maxp4(self.conv4(x)))
         return int(np.prod(x.size()))
 
+
 #TODO add dict representation
 class DDPGActor(DDPG):
     def __init__(self, img_shape, numeric_shape, output_shape,
