@@ -5,11 +5,9 @@ import os
 from subprocess import check_call
 
 import numpy as np
-from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR, CosineAnnealingWarmRestarts
 from torch.utils.data import DataLoader
 
 from config import NUMERIC_FEATURES, DEVICE, DATE_TIME, SENSORS
-from control.nn_control import NNController
 from net.ddpg_net import DDPGActor, DDPGCritic
 
 np.random.seed(48)
@@ -69,141 +67,189 @@ def main(args):
     print(critic_net)
     print(get_n_params(critic_net))
     # save path
-    actor_net_path = f'../data/models/{DATE_TIME}/{actor_net.name}'
-    critic_net_path = f'../data/models/{DATE_TIME}/{critic_net.name}'
+    actor_net_path = f'../data/models/offline/{DATE_TIME}/{actor_net.name}'
+    critic_net_path = f'../data/models/offline/{DATE_TIME}/{critic_net.name}'
     os.makedirs(actor_net_path, exist_ok=True)
     os.makedirs(critic_net_path, exist_ok=True)
     optim_steps = args.optim_steps
     logging_idx = int(len(dataset_train.dataset) / (batch_size * optim_steps))
 
     actor_writer_train = SummaryWriter(f'{actor_net_path}/train', max_queue=30, flush_secs=5)
-    actor_writer_train = SummaryWriter(f'{actor_net_path}/train', max_queue=30, flush_secs=5)
-    critic_writer_test = SummaryWriter(f'{critic_net_path}/test', max_queue=1, flush_secs=5)
+    critic_writer_train = SummaryWriter(f'{critic_net_path}/train', max_queue=1, flush_secs=5)
+    actor_writer_test = SummaryWriter(f'{actor_net_path}/test', max_queue=30, flush_secs=5)
     critic_writer_test = SummaryWriter(f'{critic_net_path}/test', max_queue=1, flush_secs=5)
 
     #Optimizers
     actor_optimizer = torch.optim.Adam(actor_net.parameters(), lr=0.001, weight_decay=0.0005)
     critic_optimizer = torch.optim.Adam(critic_net.parameters(), lr=0.001, weight_decay=0.0005)
 
-    if args.scheduler == 'cos':
-        actor_scheduler = CosineAnnealingWarmRestarts(actor_optimizer, T_0=optim_steps, T_mult=2)
-        critic_scheduler = CosineAnnealingWarmRestarts(critic_optimizer, T_0=optim_steps, T_mult=2)
-    elif args.scheduler == 'one_cycle':
-        actor_scheduler = OneCycleLR(actor_optimizer, max_lr=0.001, epochs=no_epochs,
-                                            steps_per_epoch=optim_steps)
-        critic_scheduler = OneCycleLR(critic_optimizer, max_lr=0.001, epochs=no_epochs,
-                                                    steps_per_epoch=optim_steps)
-
-    controller = NNController(actor_net=actor_net, critic_net=critic_net, no_data_points=1,
-                              features=NUMERIC_FEATURES, train=True, device=device)
-
     #Loss function
     loss_function = torch.nn.MSELoss(reduction='sum')
-    test_loss_function = torch.nn.MSELoss(reduction='sum')
 
-    best_train_loss = 1e10
-    best_test_loss = 1e10
+    actor_best_train_loss = 1e10
+    critic_best_train_loss = 1e10
+    actor_best_test_loss = 1e10
+    critic_best_test_loss = 1e10
 
     for epoch_idx in range(no_epochs):
-        train_loss = .0
-        running_loss = .0
-        # critic_running_loss = .0
-        avg_max_grad = 0.
-        avg_avg_grad = 0.
+        actor_train_loss = .0
+        critic_train_loss = .0
+        actor_running_loss = .0
+        critic_running_loss = .0
+        actor_avg_max_grad = .0
+        critic_avg_max_grad = .0
+        actor_avg_avg_grad = .0
+        critic_avg_avg_grad = .0
         for idx, batch in enumerate(iter(dataset_train)):
             global_step = int((len(dataset_train.dataset) / batch_size * epoch_idx) + idx)
             batch = unpack_batch(batch=batch, device=device)
-            loss, grad = train(input=batch, label=batch['action'], net=net, optimizer=optimizer, loss_fn=loss_function)
-            # loss, grad = train(input=batch, label=batch['q'], net=net, optimizer=optimizer, loss_fn=loss_function)
+            actor_loss, critic_loss, actor_grad, critic_grad = train_rl(batch=batch, actor_net=actor_net, critic_net=critic_net,
+                                  actor_optimizer=actor_optimizer, critic_optimizer=critic_optimizer, loss_fn=loss_function)
 
-            avg_max_grad += max([element.max() for element in grad])
-            avg_avg_grad += sum([element.mean() for element in grad]) / len(grad)
 
-            running_loss += loss
-            train_loss += loss
+            actor_avg_max_grad  += max([element.max() for element in actor_grad])
+            critic_avg_max_grad += max([element.max() for element in critic_grad])
+            actor_avg_avg_grad  += sum([element.mean() for element in actor_grad]) / len(actor_grad)
+            critic_avg_avg_grad += sum([element.mean() for element in critic_grad]) / len(critic_grad)
 
-            writer_train.add_scalar(tag=f'{net.name}/running_loss',
-                                          scalar_value=loss,
+            actor_running_loss += actor_loss
+            critic_train_loss += critic_loss
+            actor_train_loss += actor_loss
+            critic_running_loss += critic_loss
+
+            actor_writer_train.add_scalar(tag=f'{actor_net.name}/running_loss',
+                                          scalar_value=actor_loss,
                                           global_step=global_step)
-            writer_train.add_scalar(tag=f'{net.name}/max_grad', scalar_value=avg_max_grad,
+            actor_writer_train.add_scalar(tag=f'{actor_net.name}/max_grad', scalar_value=actor_avg_max_grad,
                                           global_step=global_step)
-            writer_train.add_scalar(tag=f'{net.name}/mean_grad', scalar_value=avg_avg_grad,
+            actor_writer_train.add_scalar(tag=f'{actor_net.name}/mean_grad', scalar_value=actor_avg_avg_grad,
+                                          global_step=global_step)
+
+            critic_writer_train.add_scalar(tag=f'{critic_net.name}/running_loss',
+                                          scalar_value=critic_loss,
+                                          global_step=global_step)
+            critic_writer_train.add_scalar(tag=f'{critic_net.name}/max_grad', scalar_value=critic_avg_max_grad,
+                                          global_step=global_step)
+            critic_writer_train.add_scalar(tag=f'{critic_net.name}/mean_grad', scalar_value=critic_avg_avg_grad,
                                           global_step=global_step)
 
             if idx % logging_idx == logging_idx-1:
-                print(f'Actor Epoch: {epoch_idx + 1}, Batch: {idx+1}, Loss: {running_loss/logging_idx}, Lr: {scheduler.get_last_lr()[0]}')
-                if (running_loss/logging_idx) < best_train_loss:
-                    best_train_loss = running_loss/logging_idx
-                    torch.save(net.state_dict(), f'{net_path}/train/train.pt')
+                print(f'Actor Epoch: {epoch_idx + 1}, Batch: {idx+1}, Loss: {actor_running_loss/logging_idx}')
+                print(f'Critic Epoch: {epoch_idx + 1}, Batch: {idx+1}, Loss: {critic_running_loss/logging_idx}')
+                if (critic_running_loss/logging_idx) < critic_best_train_loss:
+                    critic_best_train_loss = critic_running_loss/logging_idx
+                    torch.save(actor_net.state_dict(), f'{actor_net_path}/train/train.pt')
+                    torch.save(critic_net.state_dict(), f'{critic_net_path}/train/train.pt')
 
-                writer_train.add_scalar(tag=f'{net.name}/lr', scalar_value=scheduler.get_last_lr()[0],
-                                              global_step=global_step)
-                running_loss = 0.0
-                avg_max_grad = 0.
-                avg_avg_grad = 0.
-                scheduler.step()
+                actor_running_loss = .0
+                actor_avg_max_grad = .0
+                actor_avg_avg_grad = .0
+                critic_running_loss = .0
+                critic_avg_max_grad = .0
+                critic_avg_avg_grad = .0
 
-        print(f'{net.name} best train loss for epoch {epoch_idx+1} - {best_train_loss}')
-        writer_train.add_scalar(tag=f'{net.name}/global_loss', scalar_value=train_loss/len(dataset_train),
+        print(f'{critic_net.name} best train loss for epoch {epoch_idx+1} - {critic_best_train_loss}')
+        actor_writer_train.add_scalar(tag=f'{actor_net.name}/global_loss', scalar_value=actor_train_loss/len(dataset_train),
                                       global_step=(epoch_idx+1))
-        test_loss = .0
+        critic_writer_train.add_scalar(tag=f'{critic_net.name}/global_loss', scalar_value=critic_train_loss/len(dataset_train),
+                                      global_step=(epoch_idx+1))
+        actor_test_loss = .0
+        critic_test_loss = .0
         with torch.no_grad():
             for idx, batch in enumerate(iter(dataset_test)):
                 batch = unpack_batch(batch=batch, device=device)
-                pred = net(**batch)
-                loss = test_loss_function(pred, batch['action'])
-                # loss = test_loss_function(pred.view(-1), batch['q'])
+                q_pred = critic_net(**batch)
+                action_pred = actor_net(**batch)
+                critic_test_loss = loss_function(q_pred.view(-1), batch['q'])
+                actor_test_loss = loss_function(action_pred, batch['action'])
 
-                test_loss += loss
 
-        if (test_loss / len(dataset_test)) < best_test_loss:
-            best_test_loss = (test_loss / len(dataset_test))
+                critic_test_loss += critic_test_loss
+                actor_test_loss += actor_test_loss
 
-        torch.save(net.state_dict(), f'{net_path}/test/test_{epoch_idx+1}.pt')
+        if (critic_test_loss / len(dataset_test)) < critic_best_test_loss:
+            critic_best_test_loss = (critic_test_loss / len(dataset_test))
+        if (actor_test_loss / len(dataset_test)) < actor_best_test_loss:
+            actor_best_test_loss = (actor_test_loss / len(dataset_test))
 
-        print(f'{net.name} test loss {(test_loss/len(dataset_test)):.3f}')
-        print(f'{net.name} best test loss {best_test_loss:.3f}')
-        writer_test.add_scalar(tag=f'{net.name}/global_loss', scalar_value=(test_loss/len(dataset_test)),
+        torch.save(critic_net.state_dict(), f'{critic_net_path}/test/test_{epoch_idx+1}.pt')
+        torch.save(actor_net.state_dict(), f'{actor_net_path}/test/test_{epoch_idx+1}.pt')
+
+        print(f'{critic_net.name} test loss {(critic_test_loss/len(dataset_test)):.3f}')
+        print(f'{actor_net.name} test loss {(actor_test_loss/len(dataset_test)):.3f}')
+        print(f'{critic_net.name} best test loss {critic_best_test_loss:.3f}')
+        print(f'{actor_net.name} best test loss {actor_best_test_loss:.3f}')
+
+        critic_writer_test.add_scalar(tag=f'{critic_net.name}/global_loss', scalar_value=(critic_test_loss/len(dataset_test)),
+                                     global_step=(epoch_idx + 1))
+        actor_writer_test.add_scalar(tag=f'{actor_net.name}/global_loss', scalar_value=(actor_test_loss/len(dataset_test)),
                                      global_step=(epoch_idx + 1))
 
-    torch.save(optimizer.state_dict(), f=f'{net_path}/{optimizer.__class__.__name__}.pt')
-    torch.save(scheduler.state_dict(), f=f'{net_path}/{scheduler.__class__.__name__}.pt')
-    json.dump(vars(args), fp=open(f'{net_path}/args.json', 'w'), sort_keys=True, indent=4)
+    torch.save(actor_optimizer.state_dict(), f=f'{actor_net_path}/{actor_optimizer.__class__.__name__}.pt')
+    torch.save(critic_optimizer.state_dict(), f=f'{critic_net_path}/{critic_optimizer.__class__.__name__}.pt')
+    json.dump(vars(args), fp=open(f'{actor_net_path}/args.json', 'w'), sort_keys=True, indent=4)
+    json.dump(vars(args), fp=open(f'{critic_net_path}/args.json', 'w'), sort_keys=True, indent=4)
 
     batch = next(iter(dataset_test))
     batch = unpack_batch(batch=batch, device=device)
-    y = net(**batch)
-    g = make_dot(y, params=dict(net.named_parameters()))
-    g.save(filename=f'{DATE_TIME}_{net.name}.dot', directory=net_path)
-    check_call(['dot', '-Tpng', '-Gdpi=200', f'{net_path}/{DATE_TIME}_{net.name}.dot', '-o', f'{net_path}/{DATE_TIME}_{net.name}.png'])
 
-    writer_train.flush()
-    writer_test.flush()
-    writer_train.close()
-    writer_test.close()
+    #Actor architecture save
+    y = actor_net(**batch)
+    g = make_dot(y, params=dict(actor_net.named_parameters()))
+    g.save(filename=f'{DATE_TIME}_{actor_net.name}.dot', directory=actor_net_path)
+    check_call(['dot', '-Tpng', '-Gdpi=200', f'{actor_net_path}/{DATE_TIME}_{actor_net.name}.dot', '-o',
+                f'{actor_net_path}/{DATE_TIME}_{actor_net.name}.png'])
+
+    #Critic architecture save
+    y = critic_net(**batch)
+    g = make_dot(y, params=dict(critic_net.named_parameters()))
+    g.save(filename=f'{DATE_TIME}_{critic_net.name}.dot', directory=critic_net_path)
+    check_call(['dot', '-Tpng', '-Gdpi=200', f'{critic_net_path}/{DATE_TIME}_{critic_net.name}.dot', '-o',
+                f'{critic_net_path}/{DATE_TIME}_{critic_net.name}.png'])
+
+    actor_writer_train.flush()
+    actor_writer_test.flush()
+    actor_writer_train.close()
+    actor_writer_test.close()
+    critic_writer_train.flush()
+    critic_writer_test.flush()
+    critic_writer_train.close()
+    critic_writer_test.close()
 
 
-def train(input:dict, label:torch.Tensor, net:nn.Module, optimizer:torch.optim.Optimizer, loss_fn:torch.nn.MSELoss):
+def train_rl(batch, actor_net:nn.Module, critic_net:nn.Module, actor_optimizer:torch.optim.Optimizer,
+          critic_optimizer:torch.optim.Optimizer, loss_fn:torch.nn.MSELoss):
     '''
 
-    :param input:
-    :param idx:
-    :param net:
-    :param optimizer:
-    :param device:
+    :param batch:
+    :param actor_net:
+    :param critic_net:
+    :param actor_optimizer:
+    :param critic_optimizer:
+    :param loss_fn:
     :return:
     '''
-    optimizer.zero_grad()
-    y_pred = net(**input).view(-1)
-    loss = loss_fn(y_pred, label.view(-1))
-    loss.backward()
-    # loss_weighted = (loss * (loss / (loss.sum()/2))).sum().mean()
-    # loss_weighted.backward()
-    nn.utils.clip_grad_value_(net.parameters(), 1.5)
-    grad = [p.detach().cpu().abs() for p in net.parameters()]
-    optimizer.step()
+    critic_optimizer.zero_grad()
+    q_pred = critic_net(**batch).view(-1)
+    critic_loss = loss_fn(q_pred, batch['q'].view(-1))
+    critic_loss.backward()
+    nn.utils.clip_grad_value_(critic_net.parameters(), 1.5)
+    critic_grad = [p.detach().cpu().abs() for p in critic_net.parameters()]
+    critic_optimizer.step()
 
-    return loss.detach().cpu(), grad
+    actor_optimizer.zero_grad()
+    action = actor_net(**batch)
+    batch['action'] = action
+    actor_loss = -critic_net(**batch)
+    actor_loss = actor_loss.mean()
+    actor_loss.backward()
+    nn.utils.clip_grad_value_(actor_net.parameters(), 1.5)
+    actor_grad = [p.detach().cpu().abs() for p in actor_net.parameters()]
+    actor_optimizer.step()
+
+    return actor_loss, critic_loss, actor_grad, critic_grad
+
+
 
 
 def parse_args():

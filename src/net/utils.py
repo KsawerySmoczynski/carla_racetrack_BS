@@ -239,6 +239,100 @@ class SimpleDataset(Dataset):
 
         return self.transform(sample)
 
+
+class ReplayBuffer:
+    '''
+        TODO https://github.com/pytorch/pytorch/blob/master/torch/utils/data/_utils/collate.py
+
+        Class inspired with ptan
+        https://github.com/Shmuma/ptan/blob/049ff123f5967eaeeaa268684e13e5aec5029d9f/ptan/experience.py
+    '''
+    def __init__(self, capacity, features:list=FEATURES_FOR_BATCH, depth:bool=True, rgb:bool=False,
+                 segmentation:bool=True, transform:list=None, batch_size:int=32, **kwargs):
+        self.capacity = capacity
+        self.buffer = []
+        self.dfs = {}
+        self.features = features + list(filter(lambda x: len(x) > 1,
+                                               ['depth_indexes' * depth, 'rgb_indexes' * rgb,
+                                                'segmentation_indexes' * segmentation, 'done']))
+        self.transform = transform if transform else lambda x: x
+        self.pos = 0
+        self.batch_size = batch_size
+
+
+    def __len__(self):
+        return len(self.buffer)
+
+    # def __iter__(self):
+    #     while True:
+    #         yield self.sample()
+
+    def __getitem__(self, idx):
+        try:
+            path, step  = self.buffer[idx]
+            state = {'item': (path, step),
+                    'data': self.dfs[path].loc[step, self.features]}
+            next_state = {'item': (path, step),
+                          'data': self.dfs[path].loc[step, self.features]}
+            state = self.transform(state)
+            next_state = self.transform(next_state)
+            sample = {'state':state,
+                      'next_state':next_state}
+
+            return sample
+        except:
+            return self[idx-1]
+
+    @property
+    def df_paths(self):
+            return list(set([sample[0] for sample in self.buffer]))
+
+    def add_step(self, path:str, step:pd.Series):
+
+        self._add((path, step['step'][0]))
+        if path in self.dfs.keys():
+            self.dfs[path].append(step)
+        else:
+            self.dfs[path] = step
+
+    def _load_dfs(self, prievous=[]):
+        '''
+        Reloading DFs utilized by buffer
+        :param prievous:
+        :return:
+        '''
+        paths = self.df_paths
+
+        for path in prievous:
+            if path not in paths:
+                self.dfs.pop(path)
+
+        for path in paths:
+            if path not in prievous:
+                self.dfs[path] = pd.read_csv(f'{path}/episode_info.csv')
+
+    def _add(self, sample):
+        if len(self.buffer) < self.capacity:
+            self.buffer.append(sample)
+        else:
+            self.buffer[self.pos] = sample
+        self.pos = (self.pos + 1) % self.capacity
+
+    def _add_bulk(self, samples):
+        for sample in samples:
+            if len(self.buffer) < self.capacity:
+                self.buffer.append(sample)
+            else:
+                self.buffer[self.pos] = sample
+            self.pos = (self.pos + 1) % self.capacity
+
+    def sample(self):
+        if len(self.buffer) <= self.batch_size:
+            return default_collate([self[key] for key in range(len(self.buffer))])
+        keys = np.random.choice(range(len(self.buffer)), self.batch_size, replace=False)
+
+        return default_collate([self[key] for key in keys])
+
 # https://github.com/Shmuma/ptan/blob/049ff123f5967eaeeaa268684e13e5aec5029d9f/ptan/experience.py#L327
 class BufferedDataset(Dataset):
     def __init__(self, ids, features: list = FEATURES_FOR_BATCH, depth: bool = True, rgb: bool = False,
@@ -350,99 +444,4 @@ class BufferedAdHocDataset(Dataset):
 
     def get_batch(self, batch_size=32):
         return self.buffer[np.random.randint(0, len(self), size=(batch_size))]
-
-
-class ReplayBuffer:
-    '''
-        TODO https://github.com/pytorch/pytorch/blob/master/torch/utils/data/_utils/collate.py
-
-        Class inspired with ptan
-        https://github.com/Shmuma/ptan/blob/049ff123f5967eaeeaa268684e13e5aec5029d9f/ptan/experience.py
-    '''
-    def __init__(self, capacity, features:list=FEATURES_FOR_BATCH, depth:bool=True, rgb:bool=False,
-                 segmentation:bool=True, transform:list=None, batch_size:int=32, **kwargs):
-        self.capacity = capacity
-        self.buffer = []
-        self.dfs = {}
-        self.features = features + list(filter(lambda x: len(x) > 1,
-                                               ['depth_indexes' * depth, 'rgb_indexes' * rgb,
-                                                'segmentation_indexes' * segmentation, 'done']))
-        self.transform = transform if transform else lambda x: x
-        self.pos = 0
-        self.batch_size = batch_size
-
-
-    def __len__(self):
-        return len(self.buffer)
-
-    # def __iter__(self):
-    #     while True:
-    #         yield self.sample()
-
-    def __getitem__(self, idx):
-        try:
-            path, step  = self.buffer[idx]
-            state = {'item': (path, step),
-                    'data': self.dfs[path].loc[step, self.features]}
-            next_state = {'item': (path, step),
-                          'data': self.dfs[path].loc[step, self.features]}
-            state = self.transform(state)
-            next_state = self.transform(next_state)
-            sample = {'state':state,
-                      'next_state':next_state}
-
-            return sample
-        except:
-            return self[idx-1]
-
-    @property
-    def df_paths(self):
-            return list(set([sample[0] for sample in self.buffer]))
-
-    def add_step(self, path:str, step:pd.Series):
-
-        self._add((path, step['step'][0]))
-        if path in self.dfs.keys():
-            self.dfs[path].append(step)
-        else:
-            self.dfs[path] = step
-
-    def _load_dfs(self, prievous=[]):
-        '''
-        Reloading DFs utilized by buffer
-        :param prievous:
-        :return:
-        '''
-        paths = self.df_paths
-
-        for path in prievous:
-            if path not in paths:
-                self.dfs.pop(path)
-
-        for path in paths:
-            if path not in prievous:
-                self.dfs[path] = pd.read_csv(f'{path}/episode_info.csv')
-
-    def _add(self, sample):
-        if len(self.buffer) < self.capacity:
-            self.buffer.append(sample)
-        else:
-            self.buffer[self.pos] = sample
-        self.pos = (self.pos + 1) % self.capacity
-
-    def _add_bulk(self, samples):
-        for sample in samples:
-            if len(self.buffer) < self.capacity:
-                self.buffer.append(sample)
-            else:
-                self.buffer[self.pos] = sample
-            self.pos = (self.pos + 1) % self.capacity
-
-    def sample(self):
-        if len(self.buffer) <= self.batch_size:
-            return default_collate([self[key] for key in range(len(self.buffer))])
-        keys = np.random.choice(range(len(self.buffer)), self.batch_size, replace=False)
-
-        return default_collate([self[key] for key in keys])
-
 
