@@ -120,7 +120,7 @@ def main(args):
             critic_running_loss += critic_loss
 
             actor_writer_train.add_scalar(tag=f'{actor_net.name}/running_loss',
-                                          scalar_value=actor_loss,
+                                          scalar_value=actor_loss/batch_size,
                                           global_step=global_step)
             actor_writer_train.add_scalar(tag=f'{actor_net.name}/max_grad', scalar_value=actor_avg_max_grad,
                                           global_step=global_step)
@@ -128,7 +128,7 @@ def main(args):
                                           global_step=global_step)
 
             critic_writer_train.add_scalar(tag=f'{critic_net.name}/running_loss',
-                                          scalar_value=critic_loss,
+                                          scalar_value=critic_loss/batch_size,
                                           global_step=global_step)
             critic_writer_train.add_scalar(tag=f'{critic_net.name}/max_grad', scalar_value=critic_avg_max_grad,
                                           global_step=global_step)
@@ -151,9 +151,9 @@ def main(args):
                 critic_avg_avg_grad = .0
 
         print(f'{critic_net.name} best train loss for epoch {epoch_idx+1} - {critic_best_train_loss}')
-        actor_writer_train.add_scalar(tag=f'{actor_net.name}/global_loss', scalar_value=actor_train_loss/(len(dataset_train.dataset)/batch_size),
+        actor_writer_train.add_scalar(tag=f'{actor_net.name}/global_loss', scalar_value=(actor_train_loss/(len(dataset_train.dataset))),
                                       global_step=(epoch_idx+1))
-        critic_writer_train.add_scalar(tag=f'{critic_net.name}/global_loss', scalar_value=critic_train_loss/(len(dataset_train.dataset)/batch_size),
+        critic_writer_train.add_scalar(tag=f'{critic_net.name}/global_loss', scalar_value=(critic_train_loss/(len(dataset_train.dataset))),
                                       global_step=(epoch_idx+1))
         actor_test_loss = .0
         critic_test_loss = .0
@@ -162,28 +162,28 @@ def main(args):
                 batch = unpack_batch(batch=batch, device=device)
                 q_pred = critic_net(**batch)
                 action_pred = actor_net(**batch)
-                critic_test_loss = loss_function(q_pred.view(-1), batch['q']).abs().sum()
-                actor_test_loss = loss_function(action_pred, batch['action']).abs().sum()
+                critic_loss = loss_function(q_pred.view(-1), batch['q']).abs().sum()
+                actor_loss = loss_function(action_pred, batch['action']).abs().sum()
 
-                critic_test_loss += critic_test_loss
-                actor_test_loss += actor_test_loss
+                critic_test_loss += critic_loss
+                actor_test_loss += actor_loss
 
-        if (critic_test_loss / (len(dataset_test.dataset)/batch_size)) < critic_best_test_loss:
-            critic_best_test_loss = (critic_test_loss / (len(dataset_test.dataset)/batch_size))
-        if (actor_test_loss / (len(dataset_test.dataset)/batch_size)) < actor_best_test_loss:
-            actor_best_test_loss = (actor_test_loss / (len(dataset_test.dataset)/batch_size))
+        if critic_test_loss / len(dataset_test.dataset) < critic_best_test_loss:
+            critic_best_test_loss = (critic_test_loss / len(dataset_test.dataset))
+        if actor_test_loss / len(dataset_test.dataset) < actor_best_test_loss:
+            actor_best_test_loss = (actor_test_loss / len(dataset_test.dataset))
 
         torch.save(critic_net.state_dict(), f'{critic_net_path}/test/test_{epoch_idx+1}.pt')
         torch.save(actor_net.state_dict(), f'{actor_net_path}/test/test_{epoch_idx+1}.pt')
 
-        print(f'{critic_net.name} test loss {(critic_test_loss/(len(dataset_test.dataset)/batch_size)):.3f}')
-        print(f'{actor_net.name} test loss {(actor_test_loss/(len(dataset_test.dataset)/batch_size)):.3f}')
+        print(f'{critic_net.name} test loss {(critic_test_loss/len(dataset_test.dataset)):.3f}')
+        print(f'{actor_net.name} test loss {(actor_test_loss/len(dataset_test.dataset)):.3f}')
         print(f'{critic_net.name} best test loss {critic_best_test_loss:.3f}')
         print(f'{actor_net.name} best test loss {actor_best_test_loss:.3f}')
 
-        critic_writer_test.add_scalar(tag=f'{critic_net.name}/global_loss', scalar_value=(critic_test_loss/(len(dataset_test.dataset)/batch_size)),
+        critic_writer_test.add_scalar(tag=f'{critic_net.name}/global_loss', scalar_value=(critic_test_loss/(len(dataset_test.dataset))),
                                      global_step=(epoch_idx + 1))
-        actor_writer_test.add_scalar(tag=f'{actor_net.name}/global_loss', scalar_value=(actor_test_loss/(len(dataset_test.dataset)/batch_size)),
+        actor_writer_test.add_scalar(tag=f'{actor_net.name}/global_loss', scalar_value=(actor_test_loss/(len(dataset_test.dataset))),
                                      global_step=(epoch_idx + 1))
         torch.cuda.empty_cache()
         gc.collect()
@@ -316,17 +316,3 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print('Interrupted by user! Bye.')
 
-
-
-
-
-# params = {'batch_size': 32,
-#           'shuffle': False,
-#           'num_workers': 6}
-# p = paths_to_tuples(get_paths()[0])
-# # dataset = BufferedDataset(p, transform=transforms.Compose([DepthPreprocess(), ToSupervised()]), buffer_size = 1000)
-# # dataset.populate(1000)
-# dataset = SimpleDataset(p, transform=transforms.Compose([DepthPreprocess(), ToSupervised()]))
-# training_generator = torch.utils.data.DataLoader(dataset, **params)
-# iter_training_generator = iter(training_generator)
-# a = next(iter_training_generator)

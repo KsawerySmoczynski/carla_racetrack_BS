@@ -115,7 +115,7 @@ class DDPG(torch.nn.Module):
 
     @property
     def name(self):
-        return f'{self.__class__.__name__}_l{self.linear.out_features}_conv{self.conv.out_channels}'
+        return f'{self.__class__.__name__}_l{self.linear_hidden}_conv{self.conv_filters}'
 
     def dict(self):
         info = {'img_shape': self.img_shape,
