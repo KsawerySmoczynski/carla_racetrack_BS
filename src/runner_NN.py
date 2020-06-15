@@ -130,6 +130,13 @@ def parse_args():
         help='Linear hidden size')
 
     argparser.add_argument(
+        '--no_data',
+        default=DATA_POINTS,
+        type=int,
+        dest='no_data',
+        help='Number of sensor data from past taken into consideration')
+
+    argparser.add_argument(
         '--no_agents',
         default=NO_AGENTS,
         type=int,
@@ -170,18 +177,18 @@ def run_client(args):
         STEPS_AHEAD = args.steps_ahead
         controller = MPCController(target_speed=TARGET_SPEED, steps_ahead=STEPS_AHEAD, dt=0.1)
     elif args.controller == 'NN':
-        depth_shape = [3, 60, 80]
+        img_shape = [3, 60, 80 * args.no_data]
 
-        actor_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/20200607_0017/DDPGActor_l64_conv64/test/test_10.pt'
-        critic_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/20200606_2208/DDPGCritic_l64_conv64/test/test_13.pt'
-        actor_net = DDPGActor(img_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)],
-                              output_shape=[2], linear_hidden=args.linear, conv_hidden=args.conv, cuda=True)
+        actor_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/offline/20200614_1449/DDPGActor_l128_conv64/test/test_10.pt'
+        critic_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/offline/20200614_1449/DDPGCritic_l128_conv64/test/test_10.pt'
+        actor_net = DDPGActor(img_shape=img_shape, numeric_shape=[len(NUMERIC_FEATURES)],
+                              output_shape=[2], linear_hidden=args.linear, conv_filters=args.conv, cuda=True)
         actor_net.load_state_dict(torch.load(actor_path))
-        critic_net = DDPGCritic(actor_out_shape=[2, ], img_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)],
-                            linear_hidden=args.linear, conv_hidden=args.conv, cuda=True)
+        critic_net = DDPGCritic(actor_out_shape=[2, ], img_shape=img_shape, numeric_shape=[len(NUMERIC_FEATURES)],
+                                linear_hidden=args.linear, conv_filters=args.conv, cuda=True)
         critic_net.load_state_dict(torch.load(critic_path))
 
-        controller = NNController(actor_net=actor_net, critic_net=critic_net, no_data_points=1,
+        controller = NNController(actor_net=actor_net, critic_net=critic_net, no_data_points=args.no_data,
                                   features=NUMERIC_FEATURES, train=True, optimizer='adam', device='cuda:0')
 
         controller_path = f'../data/models/rl/{DATE_TIME}/{controller}'
@@ -203,7 +210,7 @@ def run_client(args):
     #TODO
     # Initialize replay buffer
     # Remember currently loaded dfs
-    transform = transforms.Compose([DepthSegmentationPreprocess(no_data_points=1), ToReinforcement()]) #TODO define
+    transform = transforms.Compose([DepthSegmentationPreprocess(no_data_points=args.no_data), ToReinforcement()]) #TODO define
     buffer = ReplayBuffer(capacity=100_000, features=FEATURES_FOR_BATCH, transform=transform,
                           batch_size=BATCH_SIZE, **SENSORS)
     tag = 'MPC'
@@ -286,7 +293,7 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
     #INITIALIZE SENSORS
     environment.initialize_agents_sensors()
 
-    for i in range(DATA_POINTS):
+    for i in range(args.no_data):
         world.tick()
 
     environment.initialize_agents_reporting()

@@ -58,9 +58,9 @@ def main(args):
     img_shape = batch['img'][0].shape
     #Nets
     net = DDPGActor(img_shape=img_shape, numeric_shape=[len(NUMERIC_FEATURES)], output_shape=[2],
-                          linear_hidden=linear_hidden, conv_hidden=conv_hidden)
+                    linear_hidden=linear_hidden, conv_filters=conv_hidden)
     # net = DDPGCritic(actor_out_shape=action_shape, img_shape=img_shape, numeric_shape=[len(NUMERIC_FEATURES)],
-    #                         linear_hidden=linear_hidden, conv_hidden=conv_hidden)
+    #                         linear_hidden=linear_hidden, conv_filters=conv_filters)
 
     print(len(steps))
     print(net)

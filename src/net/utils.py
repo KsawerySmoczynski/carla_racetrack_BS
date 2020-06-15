@@ -190,7 +190,7 @@ class DepthPreprocess(object):
         # convert = lambda x: x.convert('L').filter(ImageFilter.FIND_EDGES)
         # convert = lambda x: x.convert('L')
         step = max(to_list(sample['data']['depth_indexes']))
-        indexes = [idx for idx in range(step - self.no_data_points, step)]
+        indexes = [idx for idx in range(step, step+self.no_data_points)]
         imgs = load_frames(path=sample['item'][0], sensor='depth', convert=self.convert,
                                               indexes=indexes)
         del sample['data']['depth_indexes']
