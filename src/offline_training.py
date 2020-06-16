@@ -81,8 +81,8 @@ def main(args):
     critic_writer_test = SummaryWriter(f'{critic_net_path}/test', max_queue=1, flush_secs=5)
 
     #Optimizers
-    actor_optimizer = torch.optim.Adam(actor_net.parameters(), lr=0.001, weight_decay=0.0005)
-    critic_optimizer = torch.optim.Adam(critic_net.parameters(), lr=0.001, weight_decay=0.0005)
+    actor_optimizer = torch.optim.Adam(actor_net.parameters(), lr=0.001)
+    critic_optimizer = torch.optim.Adam(critic_net.parameters(), lr=0.001)
 
     #Loss function
     loss_function = torch.nn.MSELoss(reduction='sum')

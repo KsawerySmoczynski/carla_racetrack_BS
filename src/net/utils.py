@@ -51,8 +51,9 @@ def get_paths(path:str='../data/experiments', sensors:dict=SENSORS, as_tuples:bo
     :param sensors:
     :return:
     '''
-    sensors_config = [sensor*value for sensor, value in sensors.items()]
-    paths = [f'{root}/{dir}' for root, dirs, files in os.walk(path) for dir in dirs if 'sensors' not in dir]
+    sensors_config = list(filter(lambda x: len(x)>1, [sensor*value for sensor, value in sensors.items()]))
+    paths = [f'{root}/{dir}' for root, dirs, files in os.walk(path) for dir in dirs \
+             if ('sensors' not in dir) and ('.ipynb_checkpoints' not in dir)]
     for sensor in sensors_config:
         paths = [path for path in paths if sensor in path]
 

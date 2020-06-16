@@ -83,11 +83,6 @@ class DDPG(torch.nn.Module):
         self.conv5 = nn.Conv2d(int(conv_filters * 4), int(conv_filters * 4), 2, stride=2, padding=1)
         self.conv6 = nn.Conv2d(int(conv_filters * 4), int(conv_filters * 4), 2, stride=2, padding=1)
 
-        # self.maxp1 = nn.MaxPool2d(2, 2)
-        # self.maxp2 = nn.MaxPool2d(2, 2)
-        # self.maxp3 = nn.MaxPool2d(2, 2)
-        # self.maxp4 = nn.MaxPool2d(2, 2)
-
         conv_out_size = self._get_conv_out(img_shape)
 
         self.linear = nn.Linear(numeric_shape[0], int(linear_hidden / 2))
