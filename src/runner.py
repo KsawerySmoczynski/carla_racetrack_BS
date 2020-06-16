@@ -87,14 +87,6 @@ def main():
         dest='num_steps',
         help='Max number of steps per episode, if set to "None" episode will run as long as termiination conditions aren\'t satisfied')
 
-    #Controller configs
-    argparser.add_argument(
-        '--controller',
-        metavar='C',
-        default='MPC',
-        type=str,
-        help='Avialable controllers: "MPC", "NN", Default: "MPC"')
-
     argparser.add_argument(
         '--speed',
         default=90,
@@ -154,53 +146,14 @@ def run_client(args):
     client = configure_simulation(args)
 
     # Controller initialization - we initialize one controller for n-agents, what happens in multiprocessing.
-    if args.controller == 'MPC':
-        TARGET_SPEED = args.speed
-        STEPS_AHEAD = args.steps_ahead
-        controller = MPCController(target_speed=TARGET_SPEED, steps_ahead=STEPS_AHEAD, dt=0.1)
-    elif args.controller == 'NN':
-        depth_shape = [3, 60, 80]
 
-        actor_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/20200607_0017/DDPGActor_l64_conv64/test/test_10.pt'
-        critic_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/20200606_2208/DDPGCritic_l64_conv64/test/test_13.pt'
-        actor_net = DDPGActor(img_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)],
-                              output_shape=[2], linear_hidden=args.linear, conv_filters=args.conv, cuda=True)
-        actor_net.load_state_dict(torch.load(actor_path))
-        critic_net = DDPGCritic(actor_out_shape=[2, ], img_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)],
-                                linear_hidden=args.linear, conv_filters=args.conv, cuda=True)
-        critic_net.load_state_dict(torch.load(critic_path))
+    TARGET_SPEED = args.speed
+    STEPS_AHEAD = args.steps_ahead
+    controller = MPCController(target_speed=TARGET_SPEED, steps_ahead=STEPS_AHEAD, dt=0.1)
 
-        controller = NNController(actor_net=actor_net, critic_net=critic_net, no_data_points=1,
-                                  features=NUMERIC_FEATURES, train=False, optimizer=None, device='cuda:0')
-    else:
-        print(args.controller)
-        controller = None
-        print('Unsuccesfull choice of controller, aborting')
-        exit(1)
-
-    #TODO
-    # Initialize replay buffer
-    # Remember currently loaded dfs
-    transform = None #TODO define
-    buffer = None
-    # buffer = ReplayBuffer(capacity=100_000, features=FEATURES_FOR_BATCH, transform=transform,
-    #                       batch_size=BATCH_SIZE, **SENSORS)
-    # tag=None
-    # samples = get_paths(as_tuples=True, shuffle=True, sensors=SENSORS, tag=None)
-    # buffer._add_bulk(samples=samples)
-    # prievous = []
     for i in range(args.episodes):
-        #TODO
-        # Compare remembered dfs with those in buffer -> set from buffer
-        #       * existing ones remain
-        #       * if df is in remembered but not in the buffer eliminate it from dfs
-        #       * if df is not remembered but in the buffer delete it from the dfs and reload it from disk
-        # buffer._load_dfs(prievous=prievous)
-        # prievous = buffer.df_paths
-        # print(buffer.pos)
-        buffer, status, save_paths = run_episode(client=client,
+        status, save_paths = run_episode(client=client,
                                         controller=controller,
-                                        buffer=buffer,
                                         args=args)
 
         for (actor, status), path in zip(status.items(), save_paths):
@@ -209,7 +162,7 @@ def run_client(args):
 
 
 
-def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer, args) -> (ReplayBuffer, dict, dict):
+def run_episode(client:carla.Client, controller:Controller, args) -> (dict, dict):
     '''
     Runs single episode. Configures world and agent, spawns it on map and controlls it from start point to termination
     state.
@@ -236,7 +189,7 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                     'sensors':SENSORS, 'spawn_points':spawn_points, 'invert':args.invert}
     environment.init_agents(no_agents=args.no_agents, agent_config=agent_config)
     if len(environment.agents) < 1:
-        return buffer, dict({}), []
+        return dict({}), []
     spectator = world.get_spectator()
     spectator.set_transform(numpy_to_transform(
         spawn_points[environment.agents[0].spawn_point_idx-30]))
@@ -276,11 +229,9 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
         for idx, (state, action, reward, agent) in enumerate(zip(states, actions, rewards, environment.agents)):
             if agent.distance_2finish < 50:
                 print(f'agent {str(agent)} finished the race in {step} steps car {args.vehicle}')
-                #positive reward for win -> calculate it stupid
                 step_info = save_info(path=agent.save_path, state=state, action=action, reward=EXTRA_REWARD*GAMMA**step)
-                # buffer.add_step(path=agent.save_path, step=step_info)
                 status[str(agent)] = 'Finished'
-                terminal_state = agent.get_state(step=step+1, retrieve_data=True)
+                terminal_state = agent.get_state(step=step+1, retrieve_data=False)
                 save_terminal_state(path=agent.save_path, state=terminal_state, action=action)
                 agent.destroy(data=True, step=step)
                 environment.agents.pop(idx)
@@ -290,9 +241,8 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                 print(f'failed, collision {str(agent)} at step {step}, car {args.vehicle}')
                 step_info = save_info(path=agent.save_path, state=state, action=action,
                                       reward=reward - EXTRA_REWARD * (GAMMA ** step))
-                # buffer.add_step(path=agent.save_path, step=step_info)
                 status[str(agent)] = 'Collision'
-                terminal_state = agent.get_state(step=step+1, retrieve_data=True)
+                terminal_state = agent.get_state(step=step+1, retrieve_data=False)
                 save_terminal_state(path=agent.save_path, state=terminal_state, action=action)
                 agent.destroy(data=True, step=step)
                 environment.agents.pop(idx)
@@ -301,17 +251,10 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
             if state['velocity'] < 10:
                 if slow_frames[idx] > 100:
                     print(f'agent {str(agent)} stuck, finish on step {step}, car {args.vehicle}')
-                    # df = pd.read_csv(f'{agent.save_path}/episode_info.csv').iloc[:-70,:]
-                    # Find max diff between consecutive speeds and cut there it will be your idx
-                    # df.to_csv(f'{agent.save_path}/episode_info.csv', index=False)
-                    # state['step'] = step-70
-                    # step_info = save_info(path=agent.save_path, state=state, action=action,
-                    #           reward=reward - EXTRA_REWARD * (GAMMA ** step))
                     step_info = save_info(path=agent.save_path, state=state, action=action,
                                           reward=reward - EXTRA_REWARD * (GAMMA ** step))
-                    # buffer.add_step(path=agent.save_path, step=step_info)
                     status[str(agent)] = 'Stuck'
-                    terminal_state = agent.get_state(step=step+1, retrieve_data=True)
+                    terminal_state = agent.get_state(step=step+1, retrieve_data=False)
                     terminal_state['collisions'] = 2500
                     save_terminal_state(path=agent.save_path, state=terminal_state, action=action)
                     agent.destroy(data=True, step=step)
@@ -320,17 +263,6 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                 slow_frames[idx] += 1
 
             step_info = save_info(path=agent.save_path, state=state, action=action, reward=reward)
-                # step_info = save_info(path=agent.save_path, state=state, action=action, reward=reward)
-                # buffer.add_step(path=agent.save_path, step=step_info)
-
-        #TODO
-        # * sample batch * no_agents
-        # *
-        # if args.controller == 'NN':
-        #     batch = buffer.sample(batch_size=32)
-        #     actor_loss_v, critic_loss_v, q_ref_v = controller.train_on_batch(batch=batch, gamma=GAMMA)
-            #All lossess add to local tracker
-            #Add losses for averaging to global tracker
 
         if len(environment.agents) < 1:
             print('fini')

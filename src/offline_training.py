@@ -11,10 +11,10 @@ from torch.utils.data import DataLoader
 from config import NUMERIC_FEATURES, DEVICE, DATE_TIME, SENSORS, DATA_POINTS
 from net.ddpg_net import DDPGActor, DDPGCritic
 
-np.random.seed(48)
+np.random.seed(0)
 import pandas as pd
 import torch
-torch.manual_seed(48)
+torch.manual_seed(0)
 from torchviz import make_dot
 from torchvision import transforms
 from torch import multiprocessing as mp, nn

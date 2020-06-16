@@ -65,7 +65,7 @@ def get_paths(path:str='../data/experiments', sensors:dict=SENSORS, as_tuples:bo
     steps = {path:max(pd.read_csv(f'{path}/episode_info.csv', usecols=['step'])['step']) - 1 for path in paths}
 
     if as_tuples:
-        steps =  [(path, step) for path, steps_q in steps.items() for step in range(steps_q)]
+        steps = [(path, step) for path, steps_q in steps.items() for step in range(steps_q)]
         if shuffle:
             steps = [steps[i] for i in np.random.permutation(range(len(steps)))]
 
