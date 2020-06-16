@@ -51,8 +51,9 @@ def get_paths(path:str='../data/experiments', sensors:dict=SENSORS, as_tuples:bo
     :param sensors:
     :return:
     '''
-    sensors_config = [sensor*value for sensor, value in sensors.items()]
-    paths = [f'{root}/{dir}' for root, dirs, files in os.walk(path) for dir in dirs if 'sensors' not in dir]
+    sensors_config = list(filter(lambda x: len(x)>1, [sensor*value for sensor, value in sensors.items()]))
+    paths = [f'{root}/{dir}' for root, dirs, files in os.walk(path) for dir in dirs \
+             if ('sensors' not in dir) and ('.ipynb_checkpoints' not in dir)]
     for sensor in sensors_config:
         paths = [path for path in paths if sensor in path]
 
@@ -65,7 +66,7 @@ def get_paths(path:str='../data/experiments', sensors:dict=SENSORS, as_tuples:bo
     steps = {path:max(pd.read_csv(f'{path}/episode_info.csv', usecols=['step'])['step']) - 1 for path in paths}
 
     if as_tuples:
-        steps =  [(path, step) for path, steps_q in steps.items() for step in range(steps_q)]
+        steps = [(path, step) for path, steps_q in steps.items() for step in range(steps_q)]
         if shuffle:
             steps = [steps[i] for i in np.random.permutation(range(len(steps)))]
 
@@ -190,7 +191,7 @@ class DepthPreprocess(object):
         # convert = lambda x: x.convert('L').filter(ImageFilter.FIND_EDGES)
         # convert = lambda x: x.convert('L')
         step = max(to_list(sample['data']['depth_indexes']))
-        indexes = [idx for idx in range(step - self.no_data_points, step)]
+        indexes = [idx for idx in range(step, step+self.no_data_points)]
         imgs = load_frames(path=sample['item'][0], sensor='depth', convert=self.convert,
                                               indexes=indexes)
         del sample['data']['depth_indexes']

@@ -250,3 +250,19 @@ def add_dones_and_terminal_state(df:pd.DataFrame, path:str=None):
     else:
         return df
 
+def change_reward_scheme(df:pd.DataFrame, gamma: float = GAMMA, punishment:float=0.01) -> pd.DataFrame:
+
+    def reward(dist, next_dist):
+        if dist > next_dist:
+            return 1
+        elif dist == next_dist:
+            return 0
+        else:
+            return -1
+    rewards = [reward(df.loc[i, 'distance_2finish'], df.loc[i+1, 'distance_2finish'])*gamma**i - punishment
+               for i in range(len(df)-1)] + [0]
+    df['reward'] = rewards
+    qs = [sum(df.loc[i:, 'reward']) for i in range(len(df))]
+    df['q'] = qs
+    return df
+

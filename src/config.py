@@ -16,7 +16,7 @@ EXPERIMENTS_PATH = f'{DATA_PATH}/experiments'
 
 #World and simulator config
 CARLA_IP = config_dict['carla_ip']
-FRAMERATE = 30
+FRAMERATE = 12
 MAP = 'circut_spa'
 INVERT = False
 DATA_POINTS = 4
@@ -31,14 +31,14 @@ THROTTLE_BOUNDS = (-1,1)
 #Order of sensors in dict is important for the logging purposes
 SENSORS = {
     'depth':True,
-    'rgb': True,
+    'rgb': False,
     'segmentation': True,
     'collisions': True,
 }
 
 # RL config
 DEVICE = torch.device('cuda:0')
-EXTRA_REWARD = 75
+EXTRA_REWARD = 100
 # NUMERIC_FEATURES = ['state_steer', 'state_gas_brake','distance_2finish','velocity','collisions']
 NUMERIC_FEATURES = ['distance_2finish','velocity','collisions']
 FEATURES_FOR_BATCH = ['step',*NUMERIC_FEATURES,'steer','gas_brake','reward','q']

@@ -25,9 +25,42 @@ from net.utils import norm_col_init, weights_init
 # https://towardsdatascience.com/image-filters-in-python-26ee938e57d2
 # https://towardsdatascience.com/intuitively-understanding-convolutions-for-deep-learning-1f6f42faee1
 
+class ResNetBasicblock(nn.Module):
+    expansion = 1
+    """
+    https://github.com/tczuo/ResNeXt/tree/1106081591fb328081764ecb40757e94527789c5
+    RexNet basicblock (https://github.com/facebook/fb.resnet.torch/blob/master/models/resnet.lua)
+    """
+
+    def __init__(self, inplanes, planes, stride=1, downsample=None):
+        super(ResNetBasicblock, self).__init__()
+
+        self.conv_a = nn.Conv2d(inplanes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn_a = nn.BatchNorm2d(planes)
+
+        self.conv_b = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn_b = nn.BatchNorm2d(planes)
+
+        self.downsample = downsample
+
+    def forward(self, x):
+        residual = x
+
+        basicblock = self.conv_a(x)
+        basicblock = self.bn_a(basicblock)
+        basicblock = F.relu(basicblock, inplace=True)
+
+        basicblock = self.conv_b(basicblock)
+        basicblock = self.bn_b(basicblock)
+
+        if self.downsample is not None:
+            residual = self.downsample(x)
+
+        return F.relu(residual + basicblock, inplace=True)
+
 
 class DDPG(torch.nn.Module):
-    def __init__(self, img_shape, numeric_shape, linear_hidden: int = 256, conv_hidden: int = 64):
+    def __init__(self, img_shape, numeric_shape, linear_hidden: int = 256, conv_filters: int = 64):
         '''
 
         :param img_shape: no channels
@@ -35,23 +68,20 @@ class DDPG(torch.nn.Module):
         :param n_numeric_inputs:
         :param rgb:
         '''
-        assert (conv_hidden % 2 == 0), 'conv hidden has to be even number'
+        assert (conv_filters % 2 == 0), 'conv hidden has to be even number'
 
         # Num inputs to szerokość
         super(DDPG, self).__init__()
         self.img_shape = img_shape
         self.numeric_shape = numeric_shape
         self.linear_hidden = linear_hidden
-        self.conv_hidden = conv_hidden
-        self.conv = nn.Conv2d(img_shape[0], conv_hidden, 7, stride=2, padding=3)
-        self.conv2 = nn.Conv2d(conv_hidden, conv_hidden, 5, stride=1, padding=2)
-        self.conv3 = nn.Conv2d(conv_hidden, int(conv_hidden * 2), 5, stride=1, padding=1)
-        self.conv4 = nn.Conv2d(int(conv_hidden*2), int(conv_hidden * 2), 3, stride=1, padding=1)
-
-        self.maxp1 = nn.MaxPool2d(2, 2)
-        self.maxp2 = nn.MaxPool2d(2, 2)
-        self.maxp3 = nn.MaxPool2d(2, 2)
-        self.maxp4 = nn.MaxPool2d(2, 2)
+        self.conv_filters = conv_filters
+        self.conv = nn.Conv2d(img_shape[0], conv_filters, 5, stride=3, padding=3)
+        self.conv2 = nn.Conv2d(conv_filters, conv_filters*2, 5, stride=3, padding=3)
+        self.conv3 = nn.Conv2d(conv_filters*2, int(conv_filters * 2), 3, stride=2, padding=2)
+        self.conv4 = nn.Conv2d(int(conv_filters * 2), int(conv_filters * 4), 3, stride=2, padding=2)
+        self.conv5 = nn.Conv2d(int(conv_filters * 4), int(conv_filters * 4), 2, stride=2, padding=1)
+        self.conv6 = nn.Conv2d(int(conv_filters * 4), int(conv_filters * 4), 2, stride=2, padding=1)
 
         conv_out_size = self._get_conv_out(img_shape)
 
@@ -66,6 +96,8 @@ class DDPG(torch.nn.Module):
         self.conv2.weight.data.mul_(relu_gain)
         self.conv3.weight.data.mul_(relu_gain)
         self.conv4.weight.data.mul_(relu_gain)
+        self.conv5.weight.data.mul_(relu_gain)
+        self.conv6.weight.data.mul_(relu_gain)
 
         self.linear.weight.data = norm_col_init(self.linear.weight.data, 1.0)
         self.linear.bias.data.fill_(0)
@@ -78,13 +110,13 @@ class DDPG(torch.nn.Module):
 
     @property
     def name(self):
-        return f'{self.__class__.__name__}_l{self.linear.out_features}_conv{self.conv.out_channels}'
+        return f'{self.__class__.__name__}_l{self.linear_hidden}_conv{self.conv_filters}'
 
     def dict(self):
         info = {'img_shape': self.img_shape,
                 'numeric_shape': self.numeric_shape,
                 'linear_hidden': self.linear_hidden,
-                'conv_hidden': self.conv_hidden}
+                'conv_filters': self.conv_filters}
         return info
 
     def forward(self, x_numeric: torch.Tensor, depth: torch.Tensor,
@@ -92,10 +124,12 @@ class DDPG(torch.nn.Module):
         x_numeric = self.linear(x_numeric)
 
         # Adhoc conversion from rgb to img
-        x = F.relu(self.maxp1(self.conv(depth)))
-        x = F.relu(self.maxp2(self.conv2(x)))
-        x = F.relu(self.maxp3(self.conv3(x)))
-        x = F.relu(self.maxp4(self.conv4(x)))
+        x = F.relu(self.conv(depth))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        x = F.relu(self.conv4(x))
+        x = F.relu(self.conv5(x))
+        x = F.relu(self.conv6(x))
 
         x = x.view(x.size(0), -1)
         x = F.relu(self.linear_conv(x))
@@ -106,19 +140,21 @@ class DDPG(torch.nn.Module):
 
     def _get_conv_out(self, shape):
         x = torch.zeros(1, *shape)
-        x = F.relu(self.maxp1(self.conv(x)))
-        x = F.relu(self.maxp2(self.conv2(x)))
-        x = F.relu(self.maxp3(self.conv3(x)))
-        x = F.relu(self.maxp4(self.conv4(x)))
+        x = F.relu(self.conv(x))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        x = F.relu(self.conv4(x))
+        x = F.relu(self.conv5(x))
+        x = F.relu(self.conv6(x))
         return int(np.prod(x.size()))
 
 
 #TODO add dict representation
 class DDPGActor(DDPG):
     def __init__(self, img_shape, numeric_shape, output_shape,
-                 linear_hidden: int = 256, conv_hidden: int = 32, cuda: bool = True):
+                 linear_hidden: int = 256, conv_filters: int = 32, cuda: bool = True):
         super(DDPGActor, self).__init__(img_shape=img_shape, numeric_shape=numeric_shape,
-                                        linear_hidden=linear_hidden, conv_hidden=conv_hidden)
+                                        linear_hidden=linear_hidden, conv_filters=conv_filters)
         self.linear3 = nn.Linear(self.linear2.out_features, int(linear_hidden / 4))
         self.actor_linear = nn.Linear(self.linear3.out_features, output_shape[0])
 
@@ -134,10 +170,12 @@ class DDPGActor(DDPG):
     def forward(self, x_numeric: torch.Tensor, img: torch.Tensor, **kwargs) -> object:
         x_numeric = F.hardtanh(self.linear(x_numeric))
 
-        x = F.relu(self.maxp1(self.conv(img)))
-        x = F.relu(self.maxp2(self.conv2(x)))
-        x = F.relu(self.maxp3(self.conv3(x)))
-        x = F.relu(self.maxp4(self.conv4(x)))
+        x = F.relu(self.conv(img))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        x = F.relu(self.conv4(x))
+        x = F.relu(self.conv5(x))
+        x = F.relu(self.conv6(x))
 
         x = x.view(x.size(0), -1)
         x = F.hardtanh(self.linear_conv(x))
@@ -151,9 +189,9 @@ class DDPGActor(DDPG):
 
 #TODO add dict representation
 class DDPGCritic(DDPG):
-    def __init__(self, actor_out_shape, img_shape, numeric_shape, linear_hidden: int = 256, conv_hidden: int = 32, cuda: bool = True):
+    def __init__(self, actor_out_shape, img_shape, numeric_shape, linear_hidden: int = 256, conv_filters: int = 32, cuda: bool = True):
         super(DDPGCritic, self).__init__(img_shape=img_shape, numeric_shape=numeric_shape,
-                                         linear_hidden=linear_hidden, conv_hidden=conv_hidden)
+                                         linear_hidden=linear_hidden, conv_filters=conv_filters)
 
         self.linear_actor = nn.Linear(actor_out_shape[0], int(linear_hidden / 4))
         self.linear3 = nn.Linear(self.linear_actor.out_features + self.linear2.out_features, int(linear_hidden / 2))
@@ -174,10 +212,12 @@ class DDPGCritic(DDPG):
 
         x_numeric = F.hardtanh(self.linear(x_numeric))
 
-        x = F.relu(self.maxp1(self.conv(img)))
-        x = F.relu(self.maxp2(self.conv2(x)))
-        x = F.relu(self.maxp3(self.conv3(x)))
-        x = F.relu(self.maxp4(self.conv4(x)))
+        x = F.relu(self.conv(img))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        x = F.relu(self.conv4(x))
+        x = F.relu(self.conv5(x))
+        x = F.relu(self.conv6(x))
 
         x = x.view(x.size(0), -1)
         x = F.hardtanh(self.linear_conv(x))
@@ -191,3 +231,15 @@ class DDPGCritic(DDPG):
         x = self.critic_linear(x)
 
         return x
+
+
+class DownsampleA(nn.Module):
+
+  def __init__(self, nIn, nOut, stride):
+    super(DownsampleA, self).__init__()
+    assert stride == 2
+    self.avg = nn.AvgPool2d(kernel_size=1, stride=stride)
+
+  def forward(self, x):
+    x = self.avg(x)
+    return torch.cat((x, x.mul(0)), 1)

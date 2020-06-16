@@ -3,6 +3,10 @@ import copy
 import datetime
 import json
 import os
+try:
+    import queue
+except ImportError:
+    import Queue as queue
 
 import numpy as np
 import carla
@@ -41,6 +45,7 @@ class Agent:
         self.date_time = datetime.datetime.now().strftime("%Y%m%d_%H%M")
         self.controller = controller
         self.sensors = sensors_config(self.world.get_blueprint_library(), **sensors)
+        self.retrieval_sensors = [sensor for sensor in self.sensors.keys() if 'collision' not in sensor]
         self.spawn_point_idx = spawn_point_idx or int(np.random.randint(len(spawn_points)))
         self.spawn_point = spawn_points[self.spawn_point_idx]
         self.waypoints = np.concatenate([spawn_points[self.spawn_point_idx:, :], spawn_points[:self.spawn_point_idx-20, :]])[:, :3]  # delete yaw column, does not allow agent to go backward
@@ -127,10 +132,7 @@ class Agent:
         state = dict({})
         state['step'] = step
 
-        sensors = list(self.sensors.keys())
-        sensors.remove('collisions')
-
-        for sensor in sensors:
+        for sensor in self.retrieval_sensors:
             indexes = self.get_sensor_data_indexes(step)
             state[f'{sensor}_indexes'] = indexes
             if retrieve_data:
@@ -151,9 +153,6 @@ class Agent:
                                  / self.initial_distance * 10000
         state['distance_2finish'] = distance_as_proportion
 
-
-
-
         return state
 
     def get_sensor_data(self, sensor) -> list:
@@ -162,11 +161,6 @@ class Agent:
         :param sensor:
         :return: list of datapoints
         '''
-        # if len(self.sensors[sensor]['data']) < self.no_data_points:
-        #     data = [self.sensors[sensor]['data'][0] for i in
-        #             range(self.no_data_points - len(self.sensors[sensor]['data']))] \
-        #            + [frame for frame in self.sensors[sensor]['data']]
-        # else:
         data = self.sensors[sensor]['data'][-self.no_data_points:]
         return data
 
@@ -176,10 +170,6 @@ class Agent:
         :param step: int, current step
         :return: list of integers
         '''
-        # if step < self.no_data_points:
-        #     indexes = [0 for i in range(self.no_data_points - step)] \
-        #            + [idx + 1 for idx in range(step)]
-        # else:
         indexes = [idx for idx in range(step, step + self.no_data_points)]
         return indexes
 
@@ -223,8 +213,12 @@ class Agent:
             self.sensors['depth']['actor'] = self.world.spawn_actor(blueprint=self.sensors['depth']['blueprint'],
                                                   transform=self.sensors['depth']['transform'],
                                                   attach_to=self.actor)
-            self.sensors['depth']['actor'].listen(lambda img_raw: (img_raw.convert(self.sensors['depth']['color_converter']), \
-                                                 self.sensors['depth']['data'].append(to_rgb(to_array(img_raw)))))
+            self.sensors['depth']['queue'] = queue.Queue()
+            # self.sensors['depth']['actor'].listen(lambda img_raw: (img_raw.convert(self.sensors['depth']['color_converter']), \
+            #                                      self.sensors['depth']['data'].append(to_rgb(to_array(img_raw)))))
+            #TODO, jeżeli nie będzie działać to wypchnąć konwersję do funkcji retrieve data
+            self.sensors['depth']['actor'].listen(lambda img: (img.convert(self.sensors['depth']['color_converter']),
+                                                               self.sensors['depth']['queue'].put(to_rgb(to_array(img)))))
 
         if 'rgb' in self.sensors.keys():
             self.sensors['rgb']['data'] = []
@@ -233,15 +227,20 @@ class Agent:
                 transform=self.sensors['rgb']['transform'],
                 attach_to=self.actor
             )
-            self.sensors['rgb']['actor'].listen(lambda img_raw: self.sensors['rgb']['data'].append(to_rgb(to_array(img_raw))))
+            self.sensors['rgb']['queue'] = queue.Queue()
+            # self.sensors['rgb']['actor'].listen(lambda img_raw: self.sensors['rgb']['data'].append(to_rgb(to_array(img_raw))))
+            self.sensors['rgb']['actor'].listen(lambda img: self.sensors['rgb']['queue'].put(to_rgb(to_array(img))))
 
         if 'segmentation' in self.sensors.keys():
             self.sensors['segmentation']['data'] = []
             self.sensors['segmentation']['actor'] = self.world.spawn_actor(blueprint=self.sensors['segmentation']['blueprint'],
                                                   transform=self.sensors['segmentation']['transform'],
                                                   attach_to=self.actor)
+            self.sensors['segmentation']['queue'] = queue.Queue()
+            # self.sensors['segmentation']['actor'].listen(lambda img_raw: (img_raw.convert(self.sensors['segmentation']['color_converter']), \
+            #                                      self.sensors['segmentation']['data'].append(to_rgb(to_array(img_raw)))))
             self.sensors['segmentation']['actor'].listen(lambda img_raw: (img_raw.convert(self.sensors['segmentation']['color_converter']), \
-                                                 self.sensors['segmentation']['data'].append(to_rgb(to_array(img_raw)))))
+                                                             self.sensors['segmentation']['queue'].put(to_rgb(to_array(img_raw)))))
 
 
         if 'collisions' in self.sensors.keys():
@@ -259,6 +258,11 @@ class Agent:
         # self._release_control()
         # print('Control released')
 
+    def retrieve_data(self):
+        for sensor in self.retrieval_sensors:
+            img = self.sensors[sensor]['queue'].get()
+            self.sensors[sensor]['data'].append(img)
+
     def _release_control(self) -> None:
         '''
         Private method releasing control of vahicle before the start of simulation.
@@ -266,18 +270,17 @@ class Agent:
         '''
         self.actor.apply_control(carla.VehicleControl(throttle=0., brake=0., gear=1))
 
-    def _release_data(self, sensor:str, step: int) -> None:
+    def _release_data(self, sensor:str, step: int, save:bool=True) -> None:
         '''
         Private method which saves sensor data to the disk and releases memory.
         :param step:
         :return: None
         '''
-        file = f'{sensor}_{step}.png'
-        save_img(img=self.sensors[sensor]['data'][-1], path=f'{self.save_path}/sensors/{file}')
-        # if step > self.no_data_points:
+        if save:
+            file = f'{sensor}_{step}.png'
+            save_img(img=self.sensors[sensor]['data'][-1], path=f'{self.save_path}/sensors/{file}')
         self.sensors[sensor]['data'].pop(0)
-            #For future buffer change save to bulk save of all data from sensors till [-self.data_points:]
-            # self.sensors[sensor]['data'].pop(0)
+
 
     def destroy(self, data:bool=False, step:bool=False) -> None:
         '''
@@ -505,12 +508,14 @@ class Environment:
         :param step:int
         :return: reward:float,
         '''
-
-        if calc_distance(actor_location=next_state['location'], points_3D=points_3D) >= calc_distance(
-                actor_location=state['location'], points_3D=points_3D):
-            return -(next_state['velocity'] / (state['velocity'] + 0.2)) * (gamma ** step) - punishment
-
-        return (next_state['velocity'] / (state['velocity'] + 0.2)) * (gamma ** step) - punishment
+        next_dist = calc_distance(actor_location=next_state['location'], points_3D=points_3D)
+        curr_dist = calc_distance(actor_location=state['location'], points_3D=points_3D)
+        if next_dist < curr_dist:
+            return 1 * (gamma ** step) - punishment
+        elif next_dist == curr_dist:
+            return 0 - punishment
+        else:
+            return -1 * (gamma ** step) - punishment
 
     def calc_reward_distance(self, points_3D:np.array, state:dict, next_state, gamma: float = .995, punishment:float=0.05, step: int = 0) -> float:
         state_distance = calc_distance(actor_location=state['location'], points_3D=points_3D)

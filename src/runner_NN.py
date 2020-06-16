@@ -88,7 +88,7 @@ def parse_args():
 
     argparser.add_argument(
         '-s', '--num_steps',
-        default=5000,
+        default=3500,
         type=int,
         dest='num_steps',
         help='Max number of steps per episode, if set to "None" episode will run as long as termiination conditions aren\'t satisfied')
@@ -128,6 +128,13 @@ def parse_args():
         type=int,
         dest='linear',
         help='Linear hidden size')
+
+    argparser.add_argument(
+        '--no_data',
+        default=DATA_POINTS,
+        type=int,
+        dest='no_data',
+        help='Number of sensor data from past taken into consideration')
 
     argparser.add_argument(
         '--no_agents',
@@ -170,18 +177,18 @@ def run_client(args):
         STEPS_AHEAD = args.steps_ahead
         controller = MPCController(target_speed=TARGET_SPEED, steps_ahead=STEPS_AHEAD, dt=0.1)
     elif args.controller == 'NN':
-        depth_shape = [3, 60, 80]
+        img_shape = [3, 60, 80 * args.no_data]
 
-        actor_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/20200607_0017/DDPGActor_l64_conv64/test/test_10.pt'
-        critic_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/20200606_2208/DDPGCritic_l64_conv64/test/test_13.pt'
-        actor_net = DDPGActor(img_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)],
-                              output_shape=[2], linear_hidden=args.linear, conv_hidden=args.conv, cuda=True)
+        actor_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/offline/20200616_1908/DDPGActor_l64_conv64/test/test_13.pt'
+        critic_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/offline/20200616_1908/DDPGCritic_l64_conv64/test/test_13.pt'
+        actor_net = DDPGActor(img_shape=img_shape, numeric_shape=[len(NUMERIC_FEATURES)],
+                              output_shape=[2], linear_hidden=args.linear, conv_filters=args.conv, cuda=True)
         actor_net.load_state_dict(torch.load(actor_path))
-        critic_net = DDPGCritic(actor_out_shape=[2, ], img_shape=depth_shape, numeric_shape=[len(NUMERIC_FEATURES)],
-                            linear_hidden=args.linear, conv_hidden=args.conv, cuda=True)
+        critic_net = DDPGCritic(actor_out_shape=[2, ], img_shape=img_shape, numeric_shape=[len(NUMERIC_FEATURES)],
+                                linear_hidden=args.linear, conv_filters=args.conv, cuda=True)
         critic_net.load_state_dict(torch.load(critic_path))
 
-        controller = NNController(actor_net=actor_net, critic_net=critic_net, no_data_points=1,
+        controller = NNController(actor_net=actor_net, critic_net=critic_net, no_data_points=args.no_data,
                                   features=NUMERIC_FEATURES, train=True, optimizer='adam', device='cuda:0')
 
         controller_path = f'../data/models/rl/{DATE_TIME}/{controller}'
@@ -203,7 +210,7 @@ def run_client(args):
     #TODO
     # Initialize replay buffer
     # Remember currently loaded dfs
-    transform = transforms.Compose([DepthSegmentationPreprocess(no_data_points=1), ToReinforcement()]) #TODO define
+    transform = transforms.Compose([DepthSegmentationPreprocess(no_data_points=args.no_data), ToReinforcement()]) #TODO define
     buffer = ReplayBuffer(capacity=100_000, features=FEATURES_FOR_BATCH, transform=transform,
                           batch_size=BATCH_SIZE, **SENSORS)
     tag = 'MPC'
@@ -225,27 +232,29 @@ def run_client(args):
             args.map = random.choice(['RaceTrack', 'RaceTrack2'])
             if args.generate > 1:
                 args.invert = random.choice([True, False])
+        try:
+            episode_info, buffer, status, save_paths, global_step = run_episode(client=client,
+                                            controller=controller,
+                                            buffer=buffer,
+                                            writer=writer,
+                                            global_step=global_step,
+                                            args=args)
+            if args.controller == 'NN':
+                print(f'Episode {i + 1} avg Q {episode_info["episode_q"]}')
+                writer.add_scalar(f'global/episode_q', scalar_value=episode_info['episode_q'], global_step=i)
+                writer.add_scalar(f'global/episode_actor_loss_v', scalar_value=episode_info['episode_actor_loss_v'], global_step=i)
+                writer.add_scalar(f'global/episode_critic_loss_v', scalar_value=episode_info['episode_critic_loss_v'], global_step=i)
 
-        episode_info, buffer, status, save_paths, global_step = run_episode(client=client,
-                                        controller=controller,
-                                        buffer=buffer,
-                                        writer=writer,
-                                        global_step=global_step,
-                                        args=args)
-        print(f'Episode {i + 1} avg Q {episode_info["episode_q"]}')
-        writer.add_scalar(f'global/episode_q', scalar_value=episode_info['episode_q'], global_step=i)
-        writer.add_scalar(f'global/episode_actor_loss_v', scalar_value=episode_info['episode_actor_loss_v'], global_step=i)
-        writer.add_scalar(f'global/episode_critic_loss_v', scalar_value=episode_info['episode_critic_loss_v'], global_step=i)
+            for (actor, status), path in zip(status.items(), save_paths):
+                print(f'Episode {i + 1} actor {actor} ended with status: {status}')
+                print(f'Data saved in: {path}')
 
-        for (actor, status), path in zip(status.items(), save_paths):
-            print(f'Episode {i + 1} actor {actor} ended with status: {status}')
-            print(f'Data saved in: {path}')
-
-        if args.controller == 'NN' and episode_info["episode_q"] > max_avg_q:
-            max_avg_q = episode_info["episode_q"]
-            torch.save(controller.actor_net.state_dict(), f=f'{controller_path}/{controller.actor_net.__class__.__name__}.pt')
-            torch.save(controller.critic_net.state_dict(), f=f'{controller_path}/{controller.critic_net.__class__.__name__}.pt')
-
+            if args.controller == 'NN' and episode_info["episode_q"] > max_avg_q:
+                max_avg_q = episode_info["episode_q"]
+                torch.save(controller.actor_net.state_dict(), f=f'{controller_path}/{controller.actor_net.__class__.__name__}.pt')
+                torch.save(controller.critic_net.state_dict(), f=f'{controller_path}/{controller.critic_net.__class__.__name__}.pt')
+        except:
+            print(f'Unsuccesfull episode {i}')
 
 
 def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
@@ -283,11 +292,15 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
 
     environment.stabilize_vehicles()
 
-    #INITIALIZE SENSORS
     environment.initialize_agents_sensors()
 
-    for i in range(DATA_POINTS):
+    # NIE ŁADUJĄ SIĘ KLATKI TUTAJ
+    for i in range(args.no_data):
         world.tick()
+        for agent in environment.agents:
+            agent.retrieve_data()
+
+
 
     environment.initialize_agents_reporting()
     for agent in environment.agents:
@@ -301,7 +314,6 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
 
     episode_actor_loss_v = 0
     episode_critic_loss_v = 0
-
     local_step = 0
     for step in range(NUM_STEPS):
         local_step = step
@@ -309,7 +321,8 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
         actions = [agent.play_step(state) for agent, state in zip(environment.agents, states)]
 
         world.tick()
-
+        for agent in environment.agents:
+            agent.retrieve_data()
         next_states = [{'velocity': agent.velocity,'location': agent.location} for agent in environment.agents]
 
         rewards = []
@@ -326,9 +339,10 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                 step_info = save_info(path=agent.save_path, state=state, action=action, reward=reward)
                 buffer.add_step(path=agent.save_path, step=step_info)
                 status[str(agent)] = 'Finished'
-                terminal_state = agent.get_state(step=step+1, retrieve_data=True)
+                terminal_state = agent.get_state(step=step+1, retrieve_data=False)
                 save_terminal_state(path=agent.save_path, state=terminal_state, action=action)
                 avg_rewards[str(agent)] /= step
+                time.sleep(2)
                 agent.destroy(data=True, step=step)
                 environment.agents.pop(idx)
                 continue
@@ -339,22 +353,24 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                                       reward=reward - EXTRA_REWARD * (GAMMA ** step))
                 buffer.add_step(path=agent.save_path, step=step_info)
                 status[str(agent)] = 'Collision'
-                terminal_state = agent.get_state(step=step+1, retrieve_data=True)
+                terminal_state = agent.get_state(step=step+1, retrieve_data=False)
                 save_terminal_state(path=agent.save_path, state=terminal_state, action=action)
+                time.sleep(2)
                 agent.destroy(data=True, step=step)
                 environment.agents.pop(idx)
                 continue
 
             if state['velocity'] < 10:
-                if slow_frames[idx] > 100:
+                if slow_frames[idx] > 40:
                     print(f'agent {str(agent)} stuck, finish on step {step}, car {args.vehicle}')
                     step_info = save_info(path=agent.save_path, state=state, action=action,
                                           reward=reward - EXTRA_REWARD * (GAMMA ** step))
                     buffer.add_step(path=agent.save_path, step=step_info)
                     status[str(agent)] = 'Stuck'
-                    terminal_state = agent.get_state(step=step+1, retrieve_data=True)
+                    terminal_state = agent.get_state(step=step+1, retrieve_data=False)
                     terminal_state['collisions'] = 2500
                     save_terminal_state(path=agent.save_path, state=terminal_state, action=action)
+                    time.sleep(2)
                     agent.destroy(data=True, step=step)
                     environment.agents.pop(idx)
                     continue
@@ -363,9 +379,6 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
             step_info = save_info(path=agent.save_path, state=state, action=action, reward=reward)
             buffer.add_step(path=agent.save_path, step=step_info)
 
-        #TODO
-        # * sample batch * no_agents
-        # *
         if args.controller == 'NN' and len(environment.agents) > 0:
             actor_loss_avg = 0
             critic_loss_avg = 0
@@ -378,8 +391,6 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
             episode_critic_loss_v += critic_loss_avg / len(environment.agents)
             writer.add_scalar('local/actor_loss_v', scalar_value=actor_loss_avg, global_step=global_step+local_step)
             writer.add_scalar('local/critic_loss_v', scalar_value=critic_loss_avg, global_step=global_step+local_step)
-            # print(f'Avg actor loss {episode_actor_loss_v/step}')
-            # print(f'Avg critic loss {episode_critic_loss_v/step}')
 
         if len(environment.agents) < 1:
             print('fini')
@@ -387,12 +398,13 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
 
     if len(environment.agents) > 1:
         for agent in environment.agents:
+            time.sleep(2)
             agent.destroy(data=True, step=NUM_STEPS)
 
     for (agent, info), path in zip(status.items(), save_paths):
         df = pd.read_csv(f'{path}/episode_info.csv')
         if args.controller == 'MPC':
-            idx = 26
+            idx = 13
             df.loc[:idx, 'steer'] = 0.
             df.loc[:idx, 'state_steer'] = 0.
         if info == 'Max steps exceeded':
