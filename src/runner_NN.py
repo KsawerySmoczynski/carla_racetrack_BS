@@ -343,11 +343,8 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                 terminal_state = agent.get_state(step=step+1, retrieve_data=False)
                 save_terminal_state(path=agent.save_path, state=terminal_state, action=action)
                 avg_rewards[str(agent)] /= step
-                time.sleep(2)
                 agent.destroy(data=True, step=step)
-                #TODO inaczej usuwaj agentów!!!!!!!!!!!!!!!!!!!!!!
                 agents_2pop.append(idx)
-                # environment.agents.pop(idx)
                 continue
             elif agent.collision > 0:
                 print(f'failed, collision {str(agent)} at step {step}, car {args.vehicle}')
@@ -357,10 +354,8 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                 status[str(agent)] = 'Collision'
                 terminal_state = agent.get_state(step=step+1, retrieve_data=False)
                 save_terminal_state(path=agent.save_path, state=terminal_state, action=action)
-                time.sleep(2)
                 agent.destroy(data=True, step=step)
                 agents_2pop.append(idx)
-                # environment.agents.pop(idx)
                 continue
 
             if state['velocity'] < 10:
@@ -373,10 +368,8 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                     terminal_state = agent.get_state(step=step+1, retrieve_data=False)
                     terminal_state['collisions'] = 2500
                     save_terminal_state(path=agent.save_path, state=terminal_state, action=action)
-                    time.sleep(2)
                     agent.destroy(data=True, step=step)
                     agents_2pop.append(idx)
-                    # environment.agents.pop(idx)
                     continue
                 slow_frames[idx] += 1
 
@@ -398,6 +391,7 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
 
         for idx in sorted(agents_2pop, reverse=True):
             environment.agents.pop(idx)
+            agents_2pop.remove(idx)
 
         if len(environment.agents) < 1:
             print('fini')
