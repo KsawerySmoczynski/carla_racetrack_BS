@@ -19,7 +19,7 @@ from control.abstract_control import Controller
 from control.nn_control import NNController
 from spawn import sensors_config, numpy_to_transform, velocity_to_kmh, transform_to_numpy, location_to_numpy, \
     to_vehicle_control, control_to_gas_brake
-from utils import to_rgb, to_array, calc_distance, save_img, init_reporting
+from utils import to_rgb, to_array, calc_distance, save_img, init_reporting, calc_track_azimuth
 
 
 # For saving imgs
@@ -92,7 +92,7 @@ class Agent:
 
     @property
     def distance_2finish(self) -> float:
-        return calc_distance(actor_location=self.location, points_3D=self.waypoints)
+        return calc_distance(actor_location=self.location, points_3D=self.waypoints) / self.initial_distance * 10000
 
     @property
     def collision(self) -> float:
@@ -152,6 +152,8 @@ class Agent:
         distance_as_proportion = calc_distance(actor_location=state['location'],points_3D=self.waypoints) \
                                  / self.initial_distance * 10000
         state['distance_2finish'] = distance_as_proportion
+        #znormalizuj o kąt z najbliższego punktu -> trójkąt (najbliższy, najbliższy+cut, pozycja)over
+        state['track_angle'] = abs(state['yaw']) - abs(calc_track_azimuth(self.location, self.waypoints))
 
         return state
 
@@ -281,7 +283,6 @@ class Agent:
             save_img(img=self.sensors[sensor]['data'][-1], path=f'{self.save_path}/sensors/{file}')
         self.sensors[sensor]['data'].pop(0)
 
-
     def destroy(self, data:bool=False, step:bool=False) -> None:
         '''
         Destroying agent entities while preserving sensors data.
@@ -335,6 +336,7 @@ class Agent:
         json.dump(self.dict(), open(f'{self.save_path}/agent_info.json', 'w+'), indent=4)
 
         print('Init succesfull')
+
 
 class Environment:
     #TODO implement as Singleton
@@ -511,11 +513,11 @@ class Environment:
         next_dist = calc_distance(actor_location=next_state['location'], points_3D=points_3D)
         curr_dist = calc_distance(actor_location=state['location'], points_3D=points_3D)
         if next_dist < curr_dist:
-            return 1 * (gamma ** step) - punishment
+            return (1-abs(state['track_angle']/(180*2))) * (gamma ** step) - punishment
         elif next_dist == curr_dist:
-            return 0 - punishment
+            return (-abs(state['track_angle']/(180*2))) - punishment
         else:
-            return -1 * (gamma ** step) - punishment
+            return -(1+abs(state['track_angle']/(180*2))) * (gamma ** step) - punishment
 
     def calc_reward_distance(self, points_3D:np.array, state:dict, next_state, gamma: float = .995, punishment:float=0.05, step: int = 0) -> float:
         state_distance = calc_distance(actor_location=state['location'], points_3D=points_3D)

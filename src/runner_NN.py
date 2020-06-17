@@ -232,29 +232,29 @@ def run_client(args):
             args.map = random.choice(['RaceTrack', 'RaceTrack2'])
             if args.generate > 1:
                 args.invert = random.choice([True, False])
-        try:
-            episode_info, buffer, status, save_paths, global_step = run_episode(client=client,
-                                            controller=controller,
-                                            buffer=buffer,
-                                            writer=writer,
-                                            global_step=global_step,
-                                            args=args)
-            if args.controller == 'NN':
-                print(f'Episode {i + 1} avg Q {episode_info["episode_q"]}')
-                writer.add_scalar(f'global/episode_q', scalar_value=episode_info['episode_q'], global_step=i)
-                writer.add_scalar(f'global/episode_actor_loss_v', scalar_value=episode_info['episode_actor_loss_v'], global_step=i)
-                writer.add_scalar(f'global/episode_critic_loss_v', scalar_value=episode_info['episode_critic_loss_v'], global_step=i)
+        # try:
+        episode_info, buffer, status, save_paths, global_step = run_episode(client=client,
+                                        controller=controller,
+                                        buffer=buffer,
+                                        writer=writer,
+                                        global_step=global_step,
+                                        args=args)
+        if args.controller == 'NN':
+            print(f'Episode {i + 1} avg Q {episode_info["episode_q"]}')
+            writer.add_scalar(f'global/episode_q', scalar_value=episode_info['episode_q'], global_step=i)
+            writer.add_scalar(f'global/episode_actor_loss_v', scalar_value=episode_info['episode_actor_loss_v'], global_step=i)
+            writer.add_scalar(f'global/episode_critic_loss_v', scalar_value=episode_info['episode_critic_loss_v'], global_step=i)
 
-            for (actor, status), path in zip(status.items(), save_paths):
-                print(f'Episode {i + 1} actor {actor} ended with status: {status}')
-                print(f'Data saved in: {path}')
+        for (actor, status), path in zip(status.items(), save_paths):
+            print(f'Episode {i + 1} actor {actor} ended with status: {status}')
+            print(f'Data saved in: {path}')
 
-            if args.controller == 'NN' and episode_info["episode_q"] > max_avg_q:
-                max_avg_q = episode_info["episode_q"]
-                torch.save(controller.actor_net.state_dict(), f=f'{controller_path}/{controller.actor_net.__class__.__name__}.pt')
-                torch.save(controller.critic_net.state_dict(), f=f'{controller_path}/{controller.critic_net.__class__.__name__}.pt')
-        except:
-            print(f'Unsuccesfull episode {i}')
+        if args.controller == 'NN' and episode_info["episode_q"] > max_avg_q:
+            max_avg_q = episode_info["episode_q"]
+            torch.save(controller.actor_net.state_dict(), f=f'{controller_path}/{controller.actor_net.__class__.__name__}.pt')
+            torch.save(controller.critic_net.state_dict(), f=f'{controller_path}/{controller.critic_net.__class__.__name__}.pt')
+        # except:
+        #     print(f'Unsuccesfull episode {i}')
 
 
 def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
@@ -332,10 +332,11 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
             rewards.append(reward)
             avg_rewards[str(agent)] += reward
 
+        agents_2pop = []
         for idx, (state, action, reward, agent) in enumerate(zip(states, actions, rewards, environment.agents)):
             if agent.distance_2finish < 50:
-                print(f'agent {str(agent)} finished the race in {step} steps car {args.vehicle}')
-                #positive reward for win -> calculate it stupid
+                print(f'agent {str(agent)} finished the race in {step} steps car {args.vehicle}, '
+                      f'distance {agent.distance_2finish}')
                 step_info = save_info(path=agent.save_path, state=state, action=action, reward=reward)
                 buffer.add_step(path=agent.save_path, step=step_info)
                 status[str(agent)] = 'Finished'
@@ -344,9 +345,10 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                 avg_rewards[str(agent)] /= step
                 time.sleep(2)
                 agent.destroy(data=True, step=step)
-                environment.agents.pop(idx)
+                #TODO inaczej usuwaj agentów!!!!!!!!!!!!!!!!!!!!!!
+                agents_2pop.append(idx)
+                # environment.agents.pop(idx)
                 continue
-
             elif agent.collision > 0:
                 print(f'failed, collision {str(agent)} at step {step}, car {args.vehicle}')
                 step_info = save_info(path=agent.save_path, state=state, action=action,
@@ -357,7 +359,8 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                 save_terminal_state(path=agent.save_path, state=terminal_state, action=action)
                 time.sleep(2)
                 agent.destroy(data=True, step=step)
-                environment.agents.pop(idx)
+                agents_2pop.append(idx)
+                # environment.agents.pop(idx)
                 continue
 
             if state['velocity'] < 10:
@@ -372,13 +375,14 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                     save_terminal_state(path=agent.save_path, state=terminal_state, action=action)
                     time.sleep(2)
                     agent.destroy(data=True, step=step)
-                    environment.agents.pop(idx)
+                    agents_2pop.append(idx)
+                    # environment.agents.pop(idx)
                     continue
                 slow_frames[idx] += 1
 
             step_info = save_info(path=agent.save_path, state=state, action=action, reward=reward)
             buffer.add_step(path=agent.save_path, step=step_info)
-
+        
         if args.controller == 'NN' and len(environment.agents) > 0:
             actor_loss_avg = 0
             critic_loss_avg = 0
@@ -391,6 +395,9 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
             episode_critic_loss_v += critic_loss_avg / len(environment.agents)
             writer.add_scalar('local/actor_loss_v', scalar_value=actor_loss_avg, global_step=global_step+local_step)
             writer.add_scalar('local/critic_loss_v', scalar_value=critic_loss_avg, global_step=global_step+local_step)
+
+        for idx in sorted(agents_2pop, reverse=True):
+            environment.agents.pop(idx)
 
         if len(environment.agents) < 1:
             print('fini')

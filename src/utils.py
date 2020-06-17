@@ -52,6 +52,19 @@ def calc_distance(actor_location:np.array, points_3D:np.array, cut:float=0.02) -
 
     return round(distance, 5)
 
+def calc_track_azimuth(actor_location:np.array, points_3D:np.array, cut:float=0.01) -> float:
+    skipped_point = np.argmin(np.linalg.norm(points_3D - actor_location, axis=1))
+    cut_idx = int(points_3D.shape[0] * cut)
+
+    if (skipped_point + cut_idx) < points_3D.shape[0]:
+        skip = (skipped_point + cut_idx) % points_3D.shape[0]
+    else:
+        skip = skipped_point
+    track_point = points_3D[skip][:2]
+
+    return calc_azimuth(actor_location[:2], track_point)
+
+
 
 def visdom_initialize_windows(viz:visdom.Visdom, title:str, sensors:dict, location):
     '''
