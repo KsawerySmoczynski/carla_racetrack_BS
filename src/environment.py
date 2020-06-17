@@ -92,7 +92,7 @@ class Agent:
 
     @property
     def distance_2finish(self) -> float:
-        return calc_distance(actor_location=self.location, points_3D=self.waypoints)
+        return calc_distance(actor_location=self.location, points_3D=self.waypoints) / self.initial_distance * 10000
 
     @property
     def collision(self) -> float:

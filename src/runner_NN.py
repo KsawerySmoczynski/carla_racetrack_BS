@@ -315,6 +315,7 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
     episode_actor_loss_v = 0
     episode_critic_loss_v = 0
     local_step = 0
+    agents_2pop = []
     for step in range(NUM_STEPS):
         local_step = step
         states = [agent.get_state(step, retrieve_data=True) for agent in environment.agents]
@@ -344,7 +345,7 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                 avg_rewards[str(agent)] /= step
                 time.sleep(2)
                 agent.destroy(data=True, step=step)
-                environment.agents.pop(idx)
+                agents_2pop.append(idx)
                 continue
 
             elif agent.collision > 0:
@@ -357,7 +358,7 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                 save_terminal_state(path=agent.save_path, state=terminal_state, action=action)
                 time.sleep(2)
                 agent.destroy(data=True, step=step)
-                environment.agents.pop(idx)
+                agents_2pop.append(idx)
                 continue
 
             if state['velocity'] < 10:
@@ -372,7 +373,7 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                     save_terminal_state(path=agent.save_path, state=terminal_state, action=action)
                     time.sleep(2)
                     agent.destroy(data=True, step=step)
-                    environment.agents.pop(idx)
+                    agents_2pop.append(idx)
                     continue
                 slow_frames[idx] += 1
 
@@ -391,6 +392,10 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
             episode_critic_loss_v += critic_loss_avg / len(environment.agents)
             writer.add_scalar('local/actor_loss_v', scalar_value=actor_loss_avg, global_step=global_step+local_step)
             writer.add_scalar('local/critic_loss_v', scalar_value=critic_loss_avg, global_step=global_step+local_step)
+
+        for idx in sorted(agents_2pop, reverse=True):
+            environment.agents.pop(idx)
+            agents_2pop.remove(idx)
 
         if len(environment.agents) < 1:
             print('fini')
