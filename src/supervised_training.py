@@ -48,7 +48,7 @@ def main(args):
     dataset_train = SimpleDataset(ids=steps_train, batch_size=batch_size, transform=transform, **SENSORS)
     dataset_test = SimpleDataset(ids=steps_test, batch_size=batch_size, transform=transform, **SENSORS)
 
-    dataloader_params = {'batch_size': batch_size, 'shuffle': True, 'num_workers': int(mp.cpu_count())} #we've already shuffled paths
+    dataloader_params = {'batch_size': batch_size, 'shuffle': True, 'num_workers': 8} #we've already shuffled paths
 
     dataset_train = DataLoader(dataset_train, **dataloader_params)
     dataset_test = DataLoader(dataset_test, **dataloader_params)

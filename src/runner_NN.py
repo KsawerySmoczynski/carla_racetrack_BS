@@ -300,8 +300,6 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
         for agent in environment.agents:
             agent.retrieve_data()
 
-
-
     environment.initialize_agents_reporting()
     for agent in environment.agents:
         agent._release_control()
@@ -403,7 +401,6 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
 
     if len(environment.agents) > 1:
         for agent in environment.agents:
-            time.sleep(2)
             agent.destroy(data=True, step=NUM_STEPS)
 
     for (agent, info), path in zip(status.items(), save_paths):
