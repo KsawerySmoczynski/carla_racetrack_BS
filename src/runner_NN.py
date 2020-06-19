@@ -116,6 +116,13 @@ def parse_args():
         help='steps 2calculate ahead for mpc')
 
     argparser.add_argument(
+        '--epsilon',
+        default=0.3,
+        type=float,
+        dest='epsilon',
+        help='Random noise added to the controller actions')
+
+    argparser.add_argument(
         '-c', '--conv',
         default=64,
         type=int,
@@ -150,6 +157,12 @@ def parse_args():
         dest='generate',
         help='0 for normal, 1 for generating data from random map at each episode, 2 same as 1 but also maps are inverted')
 
+    argparser.add_argument(
+        '--random_init',
+        default='True',
+        type=str,
+        help='Decides of putting MPC data to replay buffer, use only with Neural network, default: true')
+
     # Logging configs
     argparser.add_argument(
         '--tensorboard',
@@ -168,6 +181,8 @@ def run_client(args):
     args.host = 'localhost'
     args.port = 2000
     args.invert = arg_bool(args.invert)
+    args.random_init = arg_bool(args.random_init)
+
 
     client = configure_simulation(args)
     writer = None
@@ -213,18 +228,14 @@ def run_client(args):
     transform = transforms.Compose([DepthSegmentationPreprocess(no_data_points=args.no_data), ToReinforcement()]) #TODO define
     buffer = ReplayBuffer(capacity=100_000, features=FEATURES_FOR_BATCH, transform=transform,
                           batch_size=BATCH_SIZE, **SENSORS)
-    tag = 'MPC'
-    samples = get_paths(as_tuples=True, shuffle=True, sensors=SENSORS, tag=None)
-    buffer._add_bulk(samples=samples)
+
+    if args.random_init:
+        samples = get_paths(as_tuples=True, shuffle=True, sensors=SENSORS, tag='MPC')
+        buffer._add_bulk(samples=samples)
     prievous = []
     max_avg_q = -1e10
     global_step = 0
     for i in range(args.episodes):
-        #TODO
-        # Compare remembered dfs with those in buffer -> set from buffer
-        #       * existing ones remain
-        #       * if df is in remembered but not in the buffer eliminate it from dfs
-        #       * if df is not remembered but in the buffer delete it from the dfs and reload it from disk
         buffer._load_dfs(prievous=prievous)
         prievous = buffer.df_paths
         print(args.generate)
@@ -378,7 +389,7 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
             step_info = save_info(path=agent.save_path, state=state, action=action, reward=reward)
             buffer.add_step(path=agent.save_path, step=step_info)
 
-        if args.controller == 'NN' and len(environment.agents) > 0:
+        if args.controller == 'NN' and len(environment.agents) > 0 and len(buffer) > 1e4:
             actor_loss_avg = 0
             critic_loss_avg = 0
             for i in range(len(environment.agents)):
@@ -386,10 +397,10 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                 actor_loss_v, critic_loss_v, q_ref_v = controller.train_on_batch(batch=batch, gamma=GAMMA)
                 actor_loss_avg += actor_loss_v
                 critic_loss_avg += critic_loss_v
-            episode_actor_loss_v += actor_loss_avg / len(environment.agents)
-            episode_critic_loss_v += critic_loss_avg / len(environment.agents)
-            writer.add_scalar('local/actor_loss_v', scalar_value=actor_loss_avg, global_step=global_step+local_step)
-            writer.add_scalar('local/critic_loss_v', scalar_value=critic_loss_avg, global_step=global_step+local_step)
+            episode_actor_loss_v += actor_loss_avg / (buffer.batch_size * len(environment.agents))
+            episode_critic_loss_v += critic_loss_avg / (buffer.batch_size * len(environment.agents))
+            writer.add_scalar('local/actor_loss_v', scalar_value=actor_loss_avg/(buffer.batch_size * len(environment.agents)), global_step=global_step+local_step)
+            writer.add_scalar('local/critic_loss_v', scalar_value=critic_loss_avg/(buffer.batch_size * len(environment.agents)), global_step=global_step+local_step)
 
         for idx in sorted(agents_2pop, reverse=True):
             environment.agents.pop(idx)

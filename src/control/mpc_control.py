@@ -44,12 +44,13 @@ class _EqualityConstraints(object):
 
 
 class MPCController(Controller):
-    def __init__(self, target_speed, steps_ahead=10, dt=0.1):
+    def __init__(self, target_speed, steps_ahead=10, dt=0.1, epsilon=0.3):
         self.target_speed = target_speed
         self.state_vars = ('x', 'y', 'v', 'ψ', 'cte', 'eψ')
 
         self.steps_ahead = steps_ahead
         self.dt = dt
+        self.epsilon = epsilon
 
         # Cost function coefficients
         self.cte_coeff = 100 # 100
@@ -91,7 +92,8 @@ class MPCController(Controller):
         controller =  {'name': self.__class__.__name__,
                        'target_speed': self.target_speed,
                        'steps_ahead': self.steps_ahead,
-                       'dt':self.dt}
+                       'dt':self.dt,
+                       'epsilon':self.epsilon}
         return controller
 
     @property
@@ -234,6 +236,10 @@ class MPCController(Controller):
         else:
             print('Unsuccessful optimization')
 
+        self.steer += self.epsilon * np.random.normal()
+        self.steer = np.clip(self.steer, -1, 1)
+        self.throttle += self.epsilon * np.random.normal()
+        self.throttle = np.clip(self.throttle, -1, 1)
         actions = {
             'steer': round(self.steer, 3),
             'gas_brake': round(self.throttle, 3),

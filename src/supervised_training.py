@@ -34,7 +34,7 @@ def main(args):
     device = torch.device('cuda:0')
 
     no_epochs = args.epochs
-    batch_size = 128
+    batch_size = args.batch
 
     linear_hidden = args.linear
     conv_hidden = args.conv
@@ -109,7 +109,7 @@ def main(args):
             train_loss += loss
 
             writer_train.add_scalar(tag=f'{net.name}/running_loss',
-                                          scalar_value=loss,
+                                          scalar_value=loss/batch_size,
                                           global_step=global_step)
             writer_train.add_scalar(tag=f'{net.name}/max_grad', scalar_value=avg_max_grad,
                                           global_step=global_step)
@@ -130,7 +130,7 @@ def main(args):
                 scheduler.step()
 
         print(f'{net.name} best train loss for epoch {epoch_idx+1} - {best_train_loss}')
-        writer_train.add_scalar(tag=f'{net.name}/global_loss', scalar_value=train_loss/len(dataset_train),
+        writer_train.add_scalar(tag=f'{net.name}/global_loss', scalar_value=train_loss/len(dataset_train.dataset),
                                       global_step=(epoch_idx+1))
         test_loss = .0
         with torch.no_grad():
@@ -149,7 +149,7 @@ def main(args):
 
         print(f'{net.name} test loss {(test_loss/len(dataset_test)):.3f}')
         print(f'{net.name} best test loss {best_test_loss:.3f}')
-        writer_test.add_scalar(tag=f'{net.name}/global_loss', scalar_value=(test_loss/len(dataset_test)),
+        writer_test.add_scalar(tag=f'{net.name}/global_loss', scalar_value=(test_loss/len(dataset_test.dataset)),
                                      global_step=(epoch_idx + 1))
 
     torch.save(optimizer.state_dict(), f=f'{net_path}/{optimizer.__class__.__name__}.pt')
@@ -217,6 +217,12 @@ def parse_args():
         default=16,
         type=int,
         dest='optim_steps',
+        help='Number of optimization steps')
+    argparser.add_argument(
+        '--batch',
+        default=128,
+        type=int,
+        dest='batch',
         help='Number of optimization steps')
     argparser.add_argument(
         '--scheduler',

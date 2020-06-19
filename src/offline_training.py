@@ -200,15 +200,15 @@ def main(args):
     y = actor_net(**batch)
     g = make_dot(y, params=dict(actor_net.named_parameters()))
     g.save(filename=f'{DATE_TIME}_{actor_net.name}.dot', directory=actor_net_path)
-    check_call(['dot', '-Tpng', '-Gdpi=200', f'{actor_net_path}/{DATE_TIME}_{actor_net.name}.dot', '-o',
-                f'{actor_net_path}/{DATE_TIME}_{actor_net.name}.png'])
-
-    #Critic architecture save
+        #Critic architecture save
     y = critic_net(**batch)
     g = make_dot(y, params=dict(critic_net.named_parameters()))
     g.save(filename=f'{DATE_TIME}_{critic_net.name}.dot', directory=critic_net_path)
+
     check_call(['dot', '-Tpng', '-Gdpi=200', f'{critic_net_path}/{DATE_TIME}_{critic_net.name}.dot', '-o',
                 f'{critic_net_path}/{DATE_TIME}_{critic_net.name}.png'])
+    check_call(['dot', '-Tpng', '-Gdpi=200', f'{actor_net_path}/{DATE_TIME}_{actor_net.name}.dot', '-o',
+                f'{actor_net_path}/{DATE_TIME}_{actor_net.name}.png'])
 
     actor_writer_train.flush()
     actor_writer_test.flush()
@@ -242,9 +242,8 @@ def train_rl(batch, actor_net:nn.Module, critic_net:nn.Module, actor_optimizer:t
 
     actor_optimizer.zero_grad()
     action = actor_net(**batch)
-    batch['action'] = action
-    actor_loss = -critic_net(**batch)
-    actor_loss = actor_loss.mean()
+    actor_loss = loss_fn(action, batch['action'])
+    actor_loss = actor_loss.sum()
     actor_loss.backward()
     nn.utils.clip_grad_value_(actor_net.parameters(), 1.5)
     actor_grad = [p.detach().cpu().abs() for p in actor_net.parameters()]
