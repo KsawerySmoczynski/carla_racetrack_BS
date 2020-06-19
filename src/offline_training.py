@@ -193,6 +193,15 @@ def main(args):
     json.dump(vars(args), fp=open(f'{actor_net_path}/args.json', 'w'), sort_keys=True, indent=4)
     json.dump(vars(args), fp=open(f'{critic_net_path}/args.json', 'w'), sort_keys=True, indent=4)
 
+    actor_writer_train.flush()
+    actor_writer_test.flush()
+    actor_writer_train.close()
+    actor_writer_test.close()
+    critic_writer_train.flush()
+    critic_writer_test.flush()
+    critic_writer_train.close()
+    critic_writer_test.close()
+
     batch = next(iter(dataset_test))
     batch = unpack_batch(batch=batch, device=device)
 
@@ -210,14 +219,7 @@ def main(args):
     check_call(['dot', '-Tpng', '-Gdpi=200', f'{actor_net_path}/{DATE_TIME}_{actor_net.name}.dot', '-o',
                 f'{actor_net_path}/{DATE_TIME}_{actor_net.name}.png'])
 
-    actor_writer_train.flush()
-    actor_writer_test.flush()
-    actor_writer_train.close()
-    actor_writer_test.close()
-    critic_writer_train.flush()
-    critic_writer_test.flush()
-    critic_writer_train.close()
-    critic_writer_test.close()
+
 
 
 def train_rl(batch, actor_net:nn.Module, critic_net:nn.Module, actor_optimizer:torch.optim.Optimizer,

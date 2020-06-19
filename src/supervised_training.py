@@ -156,6 +156,11 @@ def main(args):
     torch.save(scheduler.state_dict(), f=f'{net_path}/{scheduler.__class__.__name__}.pt')
     json.dump(vars(args), fp=open(f'{net_path}/args.json', 'w'), sort_keys=True, indent=4)
 
+    writer_train.flush()
+    writer_test.flush()
+    writer_train.close()
+    writer_test.close()
+
     batch = next(iter(dataset_test))
     batch = unpack_batch(batch=batch, device=device)
     y = net(**batch)
@@ -163,10 +168,6 @@ def main(args):
     g.save(filename=f'{DATE_TIME}_{net.name}.dot', directory=net_path)
     check_call(['dot', '-Tpng', '-Gdpi=200', f'{net_path}/{DATE_TIME}_{net.name}.dot', '-o', f'{net_path}/{DATE_TIME}_{net.name}.png'])
 
-    writer_train.flush()
-    writer_test.flush()
-    writer_train.close()
-    writer_test.close()
 
 
 def train(input:dict, label:torch.Tensor, net:nn.Module, optimizer:torch.optim.Optimizer, loss_fn:torch.nn.MSELoss):
