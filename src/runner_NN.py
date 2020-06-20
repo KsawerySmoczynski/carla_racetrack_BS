@@ -183,6 +183,7 @@ def run_client(args):
     args.invert = arg_bool(args.invert)
     args.random_init = arg_bool(args.random_init)
 
+    print(vars(args))
 
     client = configure_simulation(args)
     writer = None
@@ -194,8 +195,8 @@ def run_client(args):
     elif args.controller == 'NN':
         img_shape = [3, 60, 80 * args.no_data]
 
-        actor_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/offline/20200616_1908/DDPGActor_l64_conv64/test/test_13.pt'
-        critic_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/offline/20200616_1908/DDPGCritic_l64_conv64/test/test_13.pt'
+        actor_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/offline/20200620_0002/DDPGActor_l256_conv64/test/test_1.pt'
+        critic_path = '/home/ksawi/Documents/Workspace/carla/carla_racetrack_BS/data/models/offline/20200620_0002/DDPGCritic_l256_conv64/test/test_1.pt'
         actor_net = DDPGActor(img_shape=img_shape, numeric_shape=[len(NUMERIC_FEATURES)],
                               output_shape=[2], linear_hidden=args.linear, conv_filters=args.conv, cuda=True)
         actor_net.load_state_dict(torch.load(actor_path))
@@ -297,6 +298,9 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
     environment.init_agents(no_agents=args.no_agents, agent_config=agent_config)
     if len(environment.agents) < 1:
         return buffer, dict({}), []
+    args_path = '/'.join(environment.agents[0].save_path.split('/')[:-1])
+    os.makedirs(args_path, exist_ok=True)
+    json.dump({'global_step':global_step, **vars(args)}, fp=open(f'{args_path}/controller.json', 'a'), indent=4)
     spectator = world.get_spectator()
     spectator.set_transform(numpy_to_transform(
         spawn_points[environment.agents[0].spawn_point_idx-30]))

@@ -6,6 +6,7 @@ from subprocess import check_call
 import gc
 
 import numpy as np
+from torch.optim.lr_scheduler import OneCycleLR, CosineAnnealingWarmRestarts
 from torch.utils.data import DataLoader
 
 from config import NUMERIC_FEATURES, DEVICE, DATE_TIME, SENSORS, DATA_POINTS
@@ -84,6 +85,8 @@ def main(args):
     actor_optimizer = torch.optim.Adam(actor_net.parameters(), lr=0.001)
     critic_optimizer = torch.optim.Adam(critic_net.parameters(), lr=0.001)
 
+    actor_scheduler = CosineAnnealingWarmRestarts(actor_optimizer, T_0=optim_steps, T_mult=2)
+    critic_scheduler = CosineAnnealingWarmRestarts(critic_optimizer, T_0=optim_steps, T_mult=2)
     #Loss function
     loss_function = torch.nn.MSELoss(reduction='sum')
 
@@ -143,6 +146,13 @@ def main(args):
                     torch.save(actor_net.state_dict(), f'{actor_net_path}/train/train.pt')
                     torch.save(critic_net.state_dict(), f'{critic_net_path}/train/train.pt')
 
+                actor_writer_train.add_scalar(tag=f'{actor_net.name}/lr', scalar_value=actor_scheduler.get_last_lr()[0],
+                                        global_step=global_step)
+                critic_writer_train.add_scalar(tag=f'{critic_net.name}/lr', scalar_value=critic_scheduler.get_last_lr()[0],
+                                              global_step=global_step)
+
+                actor_scheduler.step()
+                critic_scheduler.step()
                 actor_running_loss = .0
                 actor_avg_max_grad = .0
                 actor_avg_avg_grad = .0

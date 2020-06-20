@@ -511,11 +511,11 @@ class Environment:
         next_dist = calc_distance(actor_location=next_state['location'], points_3D=points_3D)
         curr_dist = calc_distance(actor_location=state['location'], points_3D=points_3D)
         if next_dist < curr_dist:
-            return 1 * (gamma ** step) - punishment
+            return (next_state['velocity']/(state['velocity']+0.2)) * (gamma ** step) - punishment
         elif next_dist == curr_dist:
             return 0 - punishment
         else:
-            return -1 * (gamma ** step) - punishment
+            return -(next_state['velocity']/(state['velocity']+0.2)) * (gamma ** step) - punishment
 
     def calc_reward_distance(self, points_3D:np.array, state:dict, next_state, gamma: float = .995, punishment:float=0.05, step: int = 0) -> float:
         state_distance = calc_distance(actor_location=state['location'], points_3D=points_3D)

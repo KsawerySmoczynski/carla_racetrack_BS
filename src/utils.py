@@ -266,3 +266,19 @@ def change_reward_scheme(df:pd.DataFrame, gamma: float = GAMMA, punishment:float
     df['q'] = qs
     return df
 
+def change_reward_scheme(df:pd.DataFrame, gamma: float = GAMMA, punishment:float=0.01) -> pd.DataFrame:
+
+    def reward(dist, next_dist, velocity, next_velocity):
+        if dist > next_dist:
+            return next_velocity/(velocity+0.2)
+        elif dist == next_dist:
+            return 0
+        else:
+            return -next_velocity/(velocity+0.2)
+    rewards = [reward(df.loc[i, 'distance_2finish'], df.loc[i+1, 'distance_2finish'],
+                      df.loc[i, 'velocity'], df.loc[i+1, 'velocity'])*gamma**i - punishment
+               for i in range(len(df)-1)] + [0]
+    df['reward'] = rewards
+    qs = [sum(df.loc[i:, 'reward']) for i in range(len(df))]
+    df['q'] = qs
+    return df
