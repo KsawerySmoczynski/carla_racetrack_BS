@@ -368,7 +368,13 @@ class Environment:
         if self.client.get_world().get_map().name.strip() != args.map.strip():
             self.world: carla.World = self.client.load_world(args.map)
         else:
-            self.world:carla.World = self.client.reload_world()
+            self.world: carla.World = self.client.reload_world()
+            # self.world: carla.World = self.client.get_world()
+            # for actor in self.world.get_actors():
+            #     if actor == self.world.get_spectator(): ##not working
+            #         continue
+            #     actor.destroy()
+
 
         if args.synchronous & (not self.world.get_settings().synchronous_mode):
             settings = self.world.get_settings()
