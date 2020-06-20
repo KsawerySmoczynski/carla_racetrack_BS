@@ -300,7 +300,7 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
         return buffer, dict({}), []
     args_path = '/'.join(environment.agents[0].save_path.split('/')[:-1])
     os.makedirs(args_path, exist_ok=True)
-    json.dump({'global_step':global_step, **vars(args)}, fp=open(f'{args_path}/controller.json', 'a'), indent=4)
+    json.dump({'global_step':global_step, **vars(args)}, fp=open(f'{args_path}/simulation_global_step_{global_step}_args.json', 'a'), indent=4)
     spectator = world.get_spectator()
     spectator.set_transform(numpy_to_transform(
         spawn_points[environment.agents[0].spawn_point_idx-30]))
