@@ -280,8 +280,10 @@ def velocity_reward_scheme(df:pd.DataFrame, gamma: float = GAMMA, punishment:flo
     rewards = [reward(df.loc[i, 'distance_2finish'], df.loc[i+1, 'distance_2finish'],
                       df.loc[i, 'velocity'], df.loc[i+1, 'velocity'])*gamma**i - punishment
                for i in range(len(df)-1)] + [0]
-    if (max(df['step']) > 3499) or max(df['collisions']) > 0 or len(df[df['velocity']<10]) > 100:
+    if (max(df['step']) > 3499) or max(df['collisions']) > 0:
         rewards[-2] = - (punishment + EXTRA_REWARD * gamma**max((df['step'])-1))
+    elif len(df[df['velocity']<10]) > 100:
+        rewards[-2] = - (punishment + EXTRA_REWARD * gamma ** max((df['step']) - (1+0.8*SLOW_FRAMES)))
     df['reward'] = rewards
     qs = [sum(df.loc[i:, 'reward']) for i in range(len(df))]
     df['q'] = qs
@@ -295,3 +297,4 @@ def punishment_scheme(path:str, extra_reward:int=EXTRA_REWARD):
         return extra_reward/1313
     else:
         return extra_reward/3097
+

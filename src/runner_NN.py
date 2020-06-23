@@ -23,7 +23,8 @@ from control.abstract_control import Controller
 
 #Configs
 from config import DATA_PATH, FRAMERATE, GAMMA, SENSORS, VEHICLES, \
-    CARLA_IP, MAP, NO_AGENTS, EXTRA_REWARD, DATA_POINTS, NUMERIC_FEATURES, FEATURES_FOR_BATCH, BATCH_SIZE, DATE_TIME
+    CARLA_IP, MAP, NO_AGENTS, EXTRA_REWARD, DATA_POINTS, NUMERIC_FEATURES, FEATURES_FOR_BATCH, BATCH_SIZE, DATE_TIME, \
+    SLOW_FRAMES
 
 from utils import save_info, update_Qvals, arg_bool, save_terminal_state
 
@@ -375,10 +376,10 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                 continue
 
             if state['velocity'] < 10:
-                if slow_frames[idx] > 100:
+                if slow_frames[idx] > SLOW_FRAMES:
                     print(f'agent {str(agent)} stuck, finish on step {step}, car {args.vehicle}')
                     step_info = save_info(path=agent.save_path, state=state, action=action,
-                                          reward=reward - EXTRA_REWARD * (GAMMA ** step))
+                                          reward=reward - EXTRA_REWARD * (GAMMA ** (step-0.8*SLOW_FRAMES)))
                     buffer.add_step(path=agent.save_path, step=step_info)
                     status[str(agent)] = 'Stuck'
                     terminal_state = agent.get_state(step=step+1, retrieve_data=False)

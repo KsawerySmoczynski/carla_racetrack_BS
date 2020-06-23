@@ -46,7 +46,7 @@ class DDPG(torch.nn.Module):
         self.conv = nn.Conv2d(img_shape[0], conv_filters, 5, stride=4, padding=2)
         self.conv2 = nn.Conv2d(conv_filters, conv_filters*2, 5, stride=4, padding=2)
         self.conv3 = nn.Conv2d(conv_filters*2, int(conv_filters * 2), 4, stride=3, padding=2)
-        self.conv4 = nn.Conv2d(int(conv_filters * 2), int(conv_filters * 2), 4, stride=3, padding=1)
+        self.conv4 = nn.Conv2d(int(conv_filters * 2), int(conv_filters * 4), 4, stride=3, padding=1)
         self.conv5 = nn.Conv2d(int(conv_filters * 4), int(conv_filters * 4), 2, stride=2, padding=1)
         self.conv6 = nn.Conv2d(int(conv_filters * 4), int(conv_filters * 4), 2, stride=2, padding=1)
 
