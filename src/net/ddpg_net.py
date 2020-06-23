@@ -44,11 +44,11 @@ class DDPG(torch.nn.Module):
         self.linear_hidden = linear_hidden
         self.conv_filters = conv_filters
         self.conv = nn.Conv2d(img_shape[0], conv_filters, 5, stride=4, padding=2)
-        self.conv2 = nn.Conv2d(conv_filters, conv_filters*2, 4, stride=3, padding=2)
+        self.conv2 = nn.Conv2d(conv_filters, conv_filters*2, 5, stride=4, padding=2)
         self.conv3 = nn.Conv2d(conv_filters*2, int(conv_filters * 2), 4, stride=3, padding=2)
-        self.conv4 = nn.Conv2d(int(conv_filters * 2), int(conv_filters * 2), 2, stride=1, padding=1)
-        # self.conv5 = nn.Conv2d(int(conv_filters * 4), int(conv_filters * 4), 2, stride=2, padding=1)
-        # self.conv6 = nn.Conv2d(int(conv_filters * 4), int(conv_filters * 4), 2, stride=2, padding=1)
+        self.conv4 = nn.Conv2d(int(conv_filters * 2), int(conv_filters * 2), 4, stride=3, padding=1)
+        self.conv5 = nn.Conv2d(int(conv_filters * 4), int(conv_filters * 4), 2, stride=2, padding=1)
+        self.conv6 = nn.Conv2d(int(conv_filters * 4), int(conv_filters * 4), 2, stride=2, padding=1)
 
         conv_out_size = self._get_conv_out(img_shape)
 
@@ -63,8 +63,8 @@ class DDPG(torch.nn.Module):
         self.conv2.weight.data.mul_(relu_gain)
         self.conv3.weight.data.mul_(relu_gain)
         self.conv4.weight.data.mul_(relu_gain)
-        # self.conv5.weight.data.mul_(relu_gain)
-        # self.conv6.weight.data.mul_(relu_gain)
+        self.conv5.weight.data.mul_(relu_gain)
+        self.conv6.weight.data.mul_(relu_gain)
 
         self.linear.weight.data = norm_col_init(self.linear.weight.data, 1.0)
         self.linear.bias.data.fill_(0)
@@ -88,20 +88,20 @@ class DDPG(torch.nn.Module):
 
     def forward(self, x_numeric: torch.Tensor, depth: torch.Tensor,
                 rgb: torch.Tensor = None, **kwargs) -> object:
-        x_numeric = self.linear(x_numeric)
+        x_numeric = torch.tanh(self.linear(x_numeric))
 
         # Adhoc conversion from rgb to img
         x = F.relu(self.conv(depth))
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
         x = F.relu(self.conv4(x))
-        # x = F.relu(self.conv5(x))
-        # x = F.relu(self.conv6(x))
+        x = F.relu(self.conv5(x))
+        x = F.relu(self.conv6(x))
 
         x = x.view(x.size(0), -1)
-        x = F.relu(self.linear_conv(x))
+        x = torch.tanh(self.linear_conv(x))
         x = torch.cat((x_numeric, x), dim=1)
-        x = F.relu(self.linear2(x))
+        x = torch.tanh(self.linear2(x))
 
         return x
 
@@ -111,8 +111,8 @@ class DDPG(torch.nn.Module):
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
         x = F.relu(self.conv4(x))
-        # x = F.relu(self.conv5(x))
-        # x = F.relu(self.conv6(x))
+        x = F.relu(self.conv5(x))
+        x = F.relu(self.conv6(x))
         return int(np.prod(x.size()))
 
 
@@ -136,19 +136,19 @@ class DDPGActor(DDPG):
 
 
     def forward(self, x_numeric: torch.Tensor, img: torch.Tensor, **kwargs) -> object:
-        x_numeric = F.hardtanh(self.linear(x_numeric))
+        x_numeric = torch.tanh(self.linear(x_numeric))
 
         x = F.relu(self.conv(img))
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
         x = F.relu(self.conv4(x))
-        # x = F.relu(self.conv5(x))
-        # x = F.relu(self.conv6(x))
+        x = F.relu(self.conv5(x))
+        x = F.relu(self.conv6(x))
 
         x = x.view(x.size(0), -1)
-        x = F.hardtanh(self.linear_conv(x))
+        x = torch.tanh(self.linear_conv(x))
         x = torch.cat((x_numeric, x), dim=1)
-        x = F.hardtanh(self.linear2(x))
+        x = torch.tanh(self.linear2(x))
         # x = F.hardtanh(self.linear3(x))
         x = F.hardtanh(self.actor_linear(x))
         # x = torch.round(x * 1e3) / 1e3 #rounding to 3 decimal places
@@ -179,22 +179,22 @@ class DDPGCritic(DDPG):
     def forward(self, action: torch.Tensor, x_numeric: torch.Tensor,
                 img: torch.Tensor, **kwargs) -> object:
 
-        x_numeric = F.hardtanh(self.linear(x_numeric))
+        x_numeric = torch.tanh(self.linear(x_numeric))
 
         x = F.relu(self.conv(img))
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
         x = F.relu(self.conv4(x))
-        # x = F.relu(self.conv5(x))
-        # x = F.relu(self.conv6(x))
+        x = F.relu(self.conv5(x))
+        x = F.relu(self.conv6(x))
 
         x = x.view(x.size(0), -1)
-        x = F.hardtanh(self.linear_conv(x))
+        x = torch.tanh(self.linear_conv(x))
         x = torch.cat((x_numeric, x), dim=1)
-        x = F.hardtanh(self.linear2(x))
+        x = torch.tanh(self.linear2(x))
 
         action = action.view(action.size(0), -1)
-        action = F.hardtanh(self.linear_actor(action))
+        action = torch.tanh(self.linear_actor(action))
         x = torch.cat((action, x), dim=1)
         # x = F.hardtanh(self.linear3(x))
         x = self.critic_linear(x)

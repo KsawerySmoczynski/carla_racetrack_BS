@@ -178,8 +178,8 @@ def parse_args():
 
 def run_client(args):
 
-    #args.host = 'localhost'
-    #args.port = 2000
+    args.host = 'localhost'
+    args.port = 2000
     args.invert = arg_bool(args.invert)
     args.random_init = arg_bool(args.random_init)
 
