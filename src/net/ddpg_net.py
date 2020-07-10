@@ -122,12 +122,9 @@ class DDPGActor(DDPG):
                  linear_hidden: int = 256, conv_filters: int = 32, cuda: bool = True):
         super(DDPGActor, self).__init__(img_shape=img_shape, numeric_shape=numeric_shape,
                                         linear_hidden=linear_hidden, conv_filters=conv_filters)
-        # self.linear3 = nn.Linear(self.linear2.out_features, int(linear_hidden / 4))
-        # self.actor_linear = nn.Linear(self.linear3.out_features, output_shape[0])
+
         self.actor_linear = nn.Linear(self.linear2.out_features, output_shape[0])
 
-        # self.linear3.weight.data = norm_col_init(self.linear3.weight.data, 1.0)
-        # self.linear3.bias.data.fill_(0)
         self.actor_linear.weight.data = norm_col_init(self.actor_linear.weight.data, 0.01)
         self.actor_linear.bias.data.fill_(0)
 
@@ -149,9 +146,7 @@ class DDPGActor(DDPG):
         x = torch.tanh(self.linear_conv(x))
         x = torch.cat((x_numeric, x), dim=1)
         x = torch.tanh(self.linear2(x))
-        # x = F.hardtanh(self.linear3(x))
         x = F.hardtanh(self.actor_linear(x))
-        # x = torch.round(x * 1e3) / 1e3 #rounding to 3 decimal places
         return x
 
 
@@ -162,14 +157,11 @@ class DDPGCritic(DDPG):
                                          linear_hidden=linear_hidden, conv_filters=conv_filters)
 
         self.linear_actor = nn.Linear(actor_out_shape[0], int(linear_hidden / 4))
-        # self.linear3 = nn.Linear(self.linear_actor.out_features + self.linear2.out_features, int(linear_hidden / 2))
-        # self.critic_linear = nn.Linear(self.linear3.out_features, 1)
         self.critic_linear = nn.Linear(self.linear_actor.out_features + self.linear2.out_features, 1)
 
         self.linear_actor.weight.data = norm_col_init(self.linear_actor.weight.data, 1.0)
         self.linear_actor.bias.data.fill_(0)
-        # self.linear3.weight.data = norm_col_init(self.linear3.weight.data, 1.0)
-        # self.linear3.bias.data.fill_(0)
+
         self.critic_linear.weight.data = norm_col_init(self.critic_linear.weight.data, 1.0)
         self.critic_linear.bias.data.fill_(0)
 
@@ -196,7 +188,6 @@ class DDPGCritic(DDPG):
         action = action.view(action.size(0), -1)
         action = torch.tanh(self.linear_actor(action))
         x = torch.cat((action, x), dim=1)
-        # x = F.hardtanh(self.linear3(x))
         x = self.critic_linear(x)
 
         return x

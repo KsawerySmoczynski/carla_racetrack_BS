@@ -15,15 +15,13 @@ from torchvision import transforms
 from config import SENSORS, FEATURES_FOR_BATCH, DEVICE, NUMERIC_FEATURES
 
 to_list = lambda x: ast.literal_eval(x)
-# img_to_pil = lambda img: Image.fromarray(img, 'RGB').convert('L').filter(ImageFilter.FIND_EDGES)
 img_to_pil = lambda img: Image.fromarray(img, 'RGB')
-# img_to_pil = lambda img: Image.fromarray(img, 'RGB').convert('L')
+
 
 def norm_col_init(weights, std=1.0):
     x = torch.randn(weights.size())
     x *= std / torch.sqrt((x**2).sum(1, keepdim=True))
     return x
-
 
 def weights_init(m, cuda:bool = True):
     classname = m.__class__.__name__
@@ -188,15 +186,12 @@ class DepthPreprocess(object):
             self.convert = lambda x: x
 
     def __call__(self, sample):
-        # convert = lambda x: x.convert('L').filter(ImageFilter.FIND_EDGES)
-        # convert = lambda x: x.convert('L')
         step = max(to_list(sample['data']['depth_indexes']))
         indexes = [idx for idx in range(step, step+self.no_data_points)]
         imgs = load_frames(path=sample['item'][0], sensor='depth', convert=self.convert,
                                               indexes=indexes)
         del sample['data']['depth_indexes']
-        # sample['data']['depth'] = np.concatenate([img.reshape(1, img.shape[0], img.shape[1])
-        #                                           for img in sample['data']['img']], axis=2) / 255.
+
         imgs = np.concatenate([img.reshape(self.depth_channels, img.shape[0], img.shape[1])
                                                   for img in imgs], axis=2)
 
