@@ -39,6 +39,7 @@ SENSORS = {
 # RL config
 DEVICE = torch.device('cuda:0')
 EXTRA_REWARD = 100
+SLOW_FRAMES = 100
 # NUMERIC_FEATURES = ['state_steer', 'state_gas_brake','distance_2finish','velocity','collisions']
 NUMERIC_FEATURES = ['distance_2finish','velocity','collisions']
 FEATURES_FOR_BATCH = ['step',*NUMERIC_FEATURES,'steer','gas_brake','reward','q']

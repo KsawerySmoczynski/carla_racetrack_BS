@@ -368,7 +368,13 @@ class Environment:
         if self.client.get_world().get_map().name.strip() != args.map.strip():
             self.world: carla.World = self.client.load_world(args.map)
         else:
-            self.world:carla.World = self.client.reload_world()
+            self.world: carla.World = self.client.reload_world()
+            # self.world: carla.World = self.client.get_world()
+            # for actor in self.world.get_actors():
+            #     if actor == self.world.get_spectator(): ##not working
+            #         continue
+            #     actor.destroy()
+
 
         if args.synchronous & (not self.world.get_settings().synchronous_mode):
             settings = self.world.get_settings()
@@ -511,11 +517,11 @@ class Environment:
         next_dist = calc_distance(actor_location=next_state['location'], points_3D=points_3D)
         curr_dist = calc_distance(actor_location=state['location'], points_3D=points_3D)
         if next_dist < curr_dist:
-            return 1 * (gamma ** step) - punishment
+            return (next_state['velocity']/(state['velocity']+0.2)) * (gamma ** step) - punishment
         elif next_dist == curr_dist:
             return 0 - punishment
         else:
-            return -1 * (gamma ** step) - punishment
+            return -(next_state['velocity']/(state['velocity']+0.2)) * (gamma ** step) - punishment
 
     def calc_reward_distance(self, points_3D:np.array, state:dict, next_state, gamma: float = .995, punishment:float=0.05, step: int = 0) -> float:
         state_distance = calc_distance(actor_location=state['location'], points_3D=points_3D)
