@@ -79,8 +79,7 @@ def to_vehicle_control(gas_brake:float, steer:float) -> carla.VehicleControl:
     :param steer:float in range <-1,1>
     :return: carla.VehicleControl
     '''
-    # if abs(steer) < .02:
-    #     steer = .0
+
     if gas_brake > .0:
         return carla.VehicleControl(throttle=gas_brake, steer=steer, reverse=False)
     else:

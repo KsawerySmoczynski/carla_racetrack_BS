@@ -29,9 +29,6 @@ from config import DATA_PATH, FRAMERATE, GAMMA, SENSORS, VEHICLES, \
 from utils import save_info, update_Qvals, arg_bool, save_terminal_state
 
 
-#Use this script only for data generation
-# for map in 'circut_spa' 'RaceTrack' 'RaceTrack2'; do for car in 0 1 2; do for speed in 150 100 80; do python runner_multiagent.py --map=$map --vehicle=$car --speed=$speed ; done; done; done;
-
 def parse_args():
     argparser = argparse.ArgumentParser()
     # Simulator configs
@@ -188,7 +185,7 @@ def run_client(args):
 
     client = configure_simulation(args)
     writer = None
-    # Controller initialization - we initialize one controller for n-agents, what happens in multiprocessing.
+
     if args.controller == 'MPC':
         TARGET_SPEED = args.speed
         STEPS_AHEAD = args.steps_ahead
@@ -305,6 +302,7 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
     args_path = '/'.join(environment.agents[0].save_path.split('/')[:-1])
     os.makedirs(args_path, exist_ok=True)
     json.dump({'global_step':global_step, **vars(args)}, fp=open(f'{args_path}/simulation_global_step_{global_step}_args.json', 'a'), indent=4)
+
     spectator = world.get_spectator()
     spectator.set_transform(numpy_to_transform(
         spawn_points[environment.agents[0].spawn_point_idx-30]))
@@ -313,7 +311,6 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
 
     environment.initialize_agents_sensors()
 
-    # NIE ŁADUJĄ SIĘ KLATKI TUTAJ
     for i in range(args.no_data):
         world.tick()
         for agent in environment.agents:
@@ -351,13 +348,13 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
         for idx, (state, action, reward, agent) in enumerate(zip(states, actions, rewards, environment.agents)):
             if agent.distance_2finish < 50:
                 print(f'agent {str(agent)} finished the race in {step} steps car {args.vehicle}')
-                #positive reward for win -> calculate it stupid
+
                 step_info = save_info(path=agent.save_path, state=state, action=action, reward=reward)
                 buffer.add_step(path=agent.save_path, step=step_info)
                 status[str(agent)] = 'Finished'
                 terminal_state = agent.get_state(step=step+1, retrieve_data=False)
                 save_terminal_state(path=agent.save_path, state=terminal_state, action=action)
-                time.sleep(2)
+
                 agent.destroy(data=True, step=step)
                 agents_2pop.append(idx)
                 continue
@@ -370,7 +367,7 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                 status[str(agent)] = 'Collision'
                 terminal_state = agent.get_state(step=step+1, retrieve_data=False)
                 save_terminal_state(path=agent.save_path, state=terminal_state, action=action)
-                time.sleep(2)
+
                 agent.destroy(data=True, step=step)
                 agents_2pop.append(idx)
                 continue
@@ -385,7 +382,6 @@ def run_episode(client:carla.Client, controller:Controller, buffer:ReplayBuffer,
                     terminal_state = agent.get_state(step=step+1, retrieve_data=False)
                     terminal_state['collisions'] = 2500
                     save_terminal_state(path=agent.save_path, state=terminal_state, action=action)
-                    time.sleep(2)
                     agent.destroy(data=True, step=step)
                     agents_2pop.append(idx)
                     continue

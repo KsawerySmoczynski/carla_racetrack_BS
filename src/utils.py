@@ -22,7 +22,6 @@ def closest_checkpoint(actor:carla.Vehicle, checkpoints:np.array):
     distances = np.linalg.norm(checkpoints-actor_location, axis=1)
     azimuths = [abs(calc_azimuth(actor_location[:2], point[:2])) for point in checkpoints]
 
-    # TODO be clever -> this is shit.
     cut = np.argmin(distances)
     if np.argmin(azimuths) >= cut+1:
         return checkpoints[cut+1]

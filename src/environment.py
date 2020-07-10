@@ -120,7 +120,6 @@ class Agent:
 
         return action
 
-    #TODO add initial empty state from which keys will be extracted for logging
 
     def get_state(self, step, retrieve_data:bool=False, **kwargs):
         '''
@@ -255,8 +254,6 @@ class Agent:
 
         self.sensors_initialized = True
         print('Sensors initialized')
-        # self._release_control()
-        # print('Control released')
 
     def retrieve_data(self):
         for sensor in self.retrieval_sensors:
@@ -447,38 +444,6 @@ class Environment:
         '''
         for agent in self.agents:
             agent.init_reporting()
-
-    def get_agents_states(self, step:int, retrieve_data:bool=False) -> list:
-        '''
-        Multiprocessing state retrieval from agents
-        :param step:
-        :param retrieve_data:
-        :return:
-        '''
-
-        # https://stackoverflow.com/questions/29630217/multiprocessing-in-ipython-console-on-windows-machine-if-name-requirement
-        # https://stackoverflow.com/questions/23665414/multiprocessing-using-imported-modules
-        # https://pymotw.com/2/multiprocessing/basics.html -> subclassing process i importable target function
-
-        #TODO wrong
-        # TODO https://docs.python.org/3/library/concurrency.html
-        #TODO https://docs.python.org/3/library/multiprocessing.html - read all
-
-        def worker(agent, step, retrieve_data, states):
-            state = agent.get_state(step, retrieve_data)
-            states[str(agent)] = state
-
-        states = dict({})
-        processes = []
-        for agent in self.agents:
-            p = mp.Process(target=worker, args=(agent, step, retrieve_data, states))
-            processes.append(p)
-            p.start()
-
-        for p in processes:
-            p.join()
-
-        return copy.deepcopy(states)
 
     def get_agents_actions(self, states:list) -> list:
         pass

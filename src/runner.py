@@ -23,8 +23,6 @@ from config import DATA_PATH, FRAMERATE, GAMMA, SENSORS, VEHICLES, \
 from utils import save_info, update_Qvals, arg_bool, save_terminal_state
 
 
-#Use this script only for data generation
-# for map in 'circut_spa' 'RaceTrack' 'RaceTrack2'; do for car in 0 1 2; do for speed in 150 100 80; do python runner_multiagent.py --map=$map --vehicle=$car --speed=$speed ; done; done; done;
 def main():
     argparser = argparse.ArgumentParser()
     # Simulator configs
@@ -145,8 +143,6 @@ def run_client(args):
 
     client = configure_simulation(args)
 
-    # Controller initialization - we initialize one controller for n-agents, what happens in multiprocessing.
-
     TARGET_SPEED = args.speed
     STEPS_AHEAD = args.steps_ahead
     controller = MPCController(target_speed=TARGET_SPEED, steps_ahead=STEPS_AHEAD, dt=0.1)
@@ -185,11 +181,14 @@ def run_episode(client:carla.Client, controller:Controller, args) -> (dict, dict
     spawn_points = df_to_spawn_points(spawn_points_df, n=10000, invert=args.invert)
     environment = Environment(client=client)
     world = environment.reset_env(args)
+
     agent_config = {'world':world, 'controller':controller, 'vehicle':VEHICLES[args.vehicle],
                     'sensors':SENSORS, 'spawn_points':spawn_points, 'invert':args.invert}
     environment.init_agents(no_agents=args.no_agents, agent_config=agent_config)
+
     if len(environment.agents) < 1:
         return dict({}), []
+
     spectator = world.get_spectator()
     spectator.set_transform(numpy_to_transform(
         spawn_points[environment.agents[0].spawn_point_idx-30]))
@@ -282,7 +281,7 @@ def run_episode(client:carla.Client, controller:Controller, args) -> (dict, dict
             idx = len(df)-1
             df.loc[idx,'steer'] = 0.
             df.loc[idx,'gas_brake'] = 0.
-            df.loc[idx,'reward'] = 0. #TODO -> discuss if necessary
+            df.loc[idx,'reward'] = 0.
             df.loc[idx,'done'] = 1.
         #Update qvalues
         df['q'] = [sum(df['reward'][i:]) for i in range(df.shape[0])]
