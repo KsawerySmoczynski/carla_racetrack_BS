@@ -22,9 +22,6 @@ from spawn import sensors_config, numpy_to_transform, velocity_to_kmh, transform
 from utils import to_rgb, to_array, calc_distance, save_img, init_reporting
 
 
-# For saving imgs
-# https://github.com/drj11/pypng/
-
 class Agent:
     def __init__(self, world:carla.World, controller:Controller, vehicle:str, sensors:dict,
                  spawn_points:np.array, spawn_point_idx:int=None, no_data_points:int=DATA_POINTS, invert:bool=False):

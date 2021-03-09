@@ -5,26 +5,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from net.utils import norm_col_init, weights_init
 
-# PAPERS
-# https://openreview.net/pdf?id=SyZipzbCb
-# https://arxiv.org/pdf/1710.02298.pdf
-# file:///home/ksawi/Documents/Workspace/licencjat/text/ksi%C4%85%C5%BCk/Maxim%20Lapan%20-%20Deep%20Reinforcement%20Learning%20Hands-On_%20Apply%20modern%20RL%20methods,%20with%20deep%20Q-networks,%20value%20iteration,%20policy%20gradients,%20TRPO,%20AlphaGo%20Zero%20and%20more-Packt%20(2018).pdf
-
-
-
-# https://github.com/dgriff777/rl_a3c_pytorch/blob/master/model.py
-# torch.nn only supports mini-batches The entire torch.nn package only supports inputs that are a mini-batch of samples, and not a single sample.
-# For example, nn.Conv2d will take in a 4D Tensor of nSamples x nChannels x Height x Width.
-# If you have a single sample, just use input.unsqueeze(0) to add a fake batch dimension.
-# https://towardsdatascience.com/deep-deterministic-policy-gradients-explained-2d94655a9b7b
-# https://github.com/cyoon1729/Reinforcement-learning
-# https://github.com/cyoon1729/Policy-Gradient-Methods
-
-##########CONV
-# https://towardsdatascience.com/pytorch-basics-how-to-train-your-neural-net-intro-to-cnn-26a14c2ea29
-# https://towardsdatascience.com/image-filters-in-python-26ee938e57d2
-# https://towardsdatascience.com/intuitively-understanding-convolutions-for-deep-learning-1f6f42faee1
-
 
 class DDPG(torch.nn.Module):
     def __init__(self, img_shape, numeric_shape, linear_hidden: int = 256, conv_filters: int = 64):
@@ -37,7 +17,6 @@ class DDPG(torch.nn.Module):
         '''
         assert (conv_filters % 2 == 0), 'conv hidden has to be even number'
 
-        # Num inputs to szerokość
         super(DDPG, self).__init__()
         self.img_shape = img_shape
         self.numeric_shape = numeric_shape

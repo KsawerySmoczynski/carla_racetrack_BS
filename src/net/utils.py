@@ -200,7 +200,6 @@ class DepthPreprocess(object):
 
         return sample
 
-
 class RgbPreprocess(object):
     def __call__(self, sample):
         pass

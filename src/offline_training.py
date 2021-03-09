@@ -24,10 +24,6 @@ from tensorboardX import SummaryWriter
 from net.utils import get_paths, DepthPreprocess, ToSupervised, SimpleDataset, unpack_batch, get_n_params, \
     DepthSegmentationPreprocess
 
-#TODO check how pytorch dataloader works and inherit it to build adhoc loading from disk
-# https://towardsdatascience.com/deep-learning-model-training-loop-e41055a24b73
-# https://towardsdatascience.com/the-false-promise-of-off-policy-reinforcement-learning-algorithms-c56db1b4c79a
-
 def main(args):
 
     args = parse_args()
