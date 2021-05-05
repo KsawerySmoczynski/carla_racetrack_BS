@@ -1,17 +1,6 @@
-# https://apmonitor.com/wiki/index.php/Main/GekkoPythonOptimization
-# https://www.youtube.com/watch?v=Gh8R4PVg1Zc&t=70s
+# Borrowed from:
+# https://github.com/MTDzi/carla
 
-# https://medium.com/@jonathan_hui/self-driving-car-path-planning-to-maneuver-the-traffic-ac63f5a620e2
-# https://medium.com/@jonathan_hui/lane-keeping-in-autonomous-driving-with-model-predictive-control-50f06e989bc9
-
-# https://arxiv.org/pdf/1805.08551.pdf
-# https://sci-hub.tw/https://www.sciencedirect.com/science/article/pii/S2405896319303647
-
-# Read implementation , try to apply gekko in order to optimize
-
-# Implementation in torch https://locuslab.github.io/mpc.pytorch/
-
-#THIS IS WITH GEKKO
 import random
 
 import carla
