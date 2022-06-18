@@ -10,7 +10,7 @@
 
 **Architecture**
 
-![Architecture](https://s7.gifyu.com/images/architecture.png)
+![image](https://user-images.githubusercontent.com/31616749/174434601-66903153-4ecc-4a63-a3b7-b80844565e15.png)
 
 
 **Demo**
